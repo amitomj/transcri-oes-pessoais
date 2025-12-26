@@ -4,15 +4,14 @@ import {
   Upload, FileText, MessageSquare, PlayCircle, Save, FolderOpen, Plus, Trash2,
   CheckCircle2, AlertCircle, Loader2, FileAudio, BrainCircuit, Database, 
   X, Key, Users, File as FileIcon, FileImage, LayoutGrid, Paperclip, Mic, Gavel, Edit2, Check,
-  ChevronDown, ChevronRight, StopCircle, Play, Layers, ArrowUp, ArrowDown, LogOut, ExternalLink, AlertTriangle, Sun, Moon, Pencil, ChevronUp, UserPlus, Download, ZapOff, Library, Headphones, Music, HelpCircle, User, Filter, Search as SearchIcon, BookOpen, Settings, ShieldCheck
+  ChevronDown, ChevronRight, StopCircle, Play, Layers, ArrowUp, ArrowDown, LogOut, ExternalLink, AlertTriangle, Sun, Moon, Pencil, ChevronUp, UserPlus, Download, ZapOff, Library, Headphones, Music, HelpCircle, User, Filter, Search as SearchIcon, BookOpen, Settings, ShieldCheck, Zap, Play as PlayIcon
 } from 'lucide-react';
-import { EvidenceFile, Fact, ProjectState, ChatMessage, ProcessedContent, Person, EvidenceType, Citation, EvidenceCategory, AnalysisReport, SerializedProject, SerializedDatabase, FactStatus } from './types';
+import { EvidenceFile, Fact, ProjectState, ChatMessage, ProcessedContent, Person, EvidenceType, Citation, EvidenceCategory, AnalysisReport, SerializedProject, SerializedDatabase, FactStatus, UsageMetadata } from './types';
 import { processFile, analyzeFactsFromEvidence, chatWithEvidence, sanitizeTranscript, parseSecondsSafe } from './services/geminiService';
-import { exportToWord, saveProjectFile, saveDatabaseFile, loadFromJSON, exportChatToZip, exportTranscriptsToWord } from './utils/exportService';
+import { exportToWord, saveProjectFile, saveDatabaseFile, loadFromJSON, exportTranscriptsToWord } from './utils/exportService';
 import { generateDocumentation } from './utils/documentationGenerator';
 import EvidenceViewer from './components/EvidenceViewer';
 
-// --- INITIAL STATE ---
 const initialProjectState: ProjectState = {
   people: [],
   facts: [],
@@ -24,7 +23,18 @@ const initialProjectState: ProjectState = {
 
 type View = 'landing' | 'setup' | 'people' | 'analysis' | 'chat' | 'library';
 
-// GROUPED CITATION COMPONENT
+const TokenBadge: React.FC<{ usage?: UsageMetadata, compact?: boolean }> = ({ usage, compact }) => {
+    if (!usage) return null;
+    return (
+        <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full border border-emerald-200 dark:border-emerald-800/50 bg-emerald-50 dark:bg-emerald-900/10 text-[10px] font-bold text-emerald-700 dark:text-emerald-400 ${compact ? '' : 'mt-2'}`}>
+            <Zap size={11} fill="currentColor"/>
+            <span title={`Input: ${usage.promptTokens} | Output: ${usage.candidatesTokens}`}>
+                {compact ? usage.totalTokens : `Pedido: ${usage.promptTokens} | Resposta: ${usage.candidatesTokens} | Total: ${usage.totalTokens}`} tokens
+            </span>
+        </div>
+    );
+};
+
 const CitationGroup: React.FC<{ 
     fileName: string;
     contentLines: string[];
@@ -35,7 +45,6 @@ const CitationGroup: React.FC<{
 }> = ({ fileName, contentLines, evidenceFiles, onSeek, onOpenOriginal, renderInline }) => {
     const evidence = evidenceFiles.find(f => f.name.toLowerCase().includes(fileName.toLowerCase()) || fileName.toLowerCase().includes(f.name.toLowerCase()));
     const allRefs: { label: string, value: number }[] = [];
-    
     contentLines.forEach(line => {
         const regex = /\[(?:.*?@\s*)?(\d{1,2}:\d{2}(?::\d{2})?|P[áa]g\.?\s*\d+)(?:\])?/g; 
         let match;
@@ -50,42 +59,23 @@ const CitationGroup: React.FC<{
         }
     });
     const uniqueRefs = allRefs.filter((v, i, a) => a.findIndex(t => t.label === v.label) === i).sort((a,b) => a.value - b.value);
-
     const isAudio = evidence?.type === 'AUDIO';
-
     return (
-        <div className="my-3 bg-white dark:bg-slate-900/50 rounded-lg border border-gray-200 dark:border-slate-800 overflow-hidden shadow-sm transition-all group text-left">
-            <div className="px-3 py-2 bg-blue-50 dark:bg-primary-900/20 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
+        <div className="my-4 bg-white dark:bg-slate-900/50 rounded-xl border border-gray-200 dark:border-slate-800 overflow-hidden shadow-md transition-all group text-left">
+            <div className="px-4 py-3 bg-blue-50 dark:bg-primary-900/20 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                    {isAudio ? <FileAudio size={14} className="text-primary-600 dark:text-primary-400" /> : <FileText size={14} className="text-orange-600 dark:text-orange-400" />}
-                    <span className="text-xs font-bold text-gray-700 dark:text-primary-300 uppercase truncate max-w-[200px]" title={fileName}>{fileName}</span>
+                    {isAudio ? <FileAudio size={16} className="text-primary-600 dark:text-primary-400" /> : <FileText size={16} className="text-orange-600 dark:text-orange-400" />}
+                    <span className="text-xs font-black text-gray-700 dark:text-primary-300 uppercase truncate max-w-[300px]" title={fileName}>{fileName}</span>
                 </div>
-                 {evidence && !evidence.isVirtual && (
-                     <button onClick={(e) => { e.stopPropagation(); onOpenOriginal(evidence.id); }} className="flex items-center gap-1 px-2 py-0.5 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded text-[10px] text-gray-500 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
-                         <ExternalLink size={10} /> Abrir Original
-                     </button>
-                 )}
             </div>
-            <div className="p-4 text-sm text-gray-700 dark:text-slate-300 leading-relaxed space-y-2">
+            <div className="p-5 text-base text-gray-700 dark:text-slate-300 leading-relaxed space-y-3">
                 {contentLines.map((line, i) => (<div key={i}>{renderInline(line)}</div>))}
             </div>
             {evidence && uniqueRefs.length > 0 && (
-                <div className="px-3 py-2 bg-gray-50 dark:bg-slate-950 border-t border-gray-200 dark:border-slate-800 flex flex-wrap gap-2 items-center">
-                    <span className="text-[10px] font-bold text-gray-400 dark:text-slate-600 uppercase mr-2">Ver na fonte:</span>
+                <div className="px-4 py-3 bg-gray-50 dark:bg-slate-950 border-t border-gray-200 dark:border-slate-800 flex flex-wrap gap-2 items-center">
                     {uniqueRefs.map((ref, idx) => (
-                         <button 
-                            key={idx} 
-                            onClick={(e) => { 
-                                e.stopPropagation(); 
-                                if (isAudio) onSeek(evidence.id, ref.value);
-                                else onOpenOriginal(evidence.id, ref.value);
-                            }} 
-                            className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-mono transition-colors border shadow-sm
-                                ${isAudio 
-                                    ? 'bg-blue-100 dark:bg-primary-900/30 text-blue-700 dark:text-primary-300 border-blue-200 dark:border-primary-800/50 hover:bg-blue-200' 
-                                    : 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800/50 hover:bg-orange-200'}`}
-                         >
-                            {isAudio ? <Play size={8} fill="currentColor"/> : <BookOpen size={8}/>} {ref.label}
+                         <button key={idx} onClick={(e) => { e.stopPropagation(); if (isAudio) onSeek(evidence.id, ref.value); else onOpenOriginal(evidence.id, ref.value); }} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono transition-colors border shadow-sm ${isAudio ? 'bg-blue-100 dark:bg-primary-900/30 text-blue-700 dark:text-primary-300 border-blue-200 hover:bg-blue-200' : 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 border-orange-200 hover:bg-orange-200'}`}>
+                            {isAudio ? <Play size={10} fill="currentColor"/> : <BookOpen size={10}/>} {ref.label}
                         </button>
                     ))}
                 </div>
@@ -104,21 +94,15 @@ const App: React.FC = () => {
   const abortProcessingRef = useRef<boolean>(false);
   const [activeEvidenceId, setActiveEvidenceId] = useState<string | null>(null);
   const [seekSeconds, setSeekSeconds] = useState<number | null>(null);
-  const [isManualImportOpen, setIsManualImportOpen] = useState(false);
-  const [manualText, setManualText] = useState("");
-  const [manualName, setManualName] = useState("");
-  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
-  const [dragOverCategory, setDragOverCategory] = useState<EvidenceCategory | null>(null);
-  const [showQuotaModal, setShowQuotaModal] = useState(false);
   const [chatInput, setChatInput] = useState("");
   const [isChatting, setIsChatting] = useState(false);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [librarySearch, setLibrarySearch] = useState("");
-  const [libraryFilterOnlyProcessed, setLibraryFilterOnlyProcessed] = useState(false);
-
-  // API Key State (Only stored in memory)
   const [userApiKey, setUserApiKey] = useState<string>("");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [showQuotaModal, setShowQuotaModal] = useState(false);
+  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
+  const [dragOverCategory, setDragOverCategory] = useState<EvidenceCategory | null>(null);
 
   const projectInputRef = useRef<HTMLInputElement>(null);
   const databaseInputRef = useRef<HTMLInputElement>(null);
@@ -135,16 +119,11 @@ const App: React.FC = () => {
     }
   }, [project.chatHistory, currentView]);
 
-  const isQuotaError = (error: any): boolean => {
-      const msg = error?.message?.toLowerCase() || "";
-      return msg.includes('429') || msg.includes('quota') || msg.includes('resource exhausted') || msg.includes('too many requests');
-  };
-
   const handleGlobalError = (e: any) => {
       if (e.message === "AUTH_FAILED") {
-          alert("A sua API key não foi aceite pelo serviço. Verifique se está correta ou deixe o campo vazio para usar a API por defeito.");
+          alert("A chave API foi rejeitada ou é inválida.");
           setCurrentView('landing'); 
-      } else if (isQuotaError(e)) {
+      } else if (e.message?.includes('429')) {
           setShowQuotaModal(true);
       } else {
           alert(`Erro: ${e.message}`);
@@ -153,11 +132,36 @@ const App: React.FC = () => {
 
   const getFileType = (file: File): EvidenceType => {
       const name = file.name.toLowerCase();
-      if (file.type.startsWith('audio/') || name.endsWith('.mp3') || name.endsWith('.wav') || name.endsWith('.m4a') || name.endsWith('.ogg')) return 'AUDIO';
+      if (file.type.startsWith('audio/') || name.endsWith('.mp3') || name.endsWith('.wav') || name.endsWith('.m4a')) return 'AUDIO';
       if (file.type === 'application/pdf' || name.endsWith('.pdf')) return 'PDF';
-      if (file.type.startsWith('image/')) return 'IMAGE';
-      if (file.type.startsWith('text/')) return 'TEXT';
       return 'OTHER';
+  };
+
+  const handleLoadProject = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+        const result = await loadFromJSON(file);
+        if (result.type === 'project') {
+            setProject(prev => ({ ...prev, ...result.data }));
+        } else if (result.type === 'database') {
+            setProject(prev => ({ ...prev, processedData: result.data.processedData }));
+            const restoredManifest = result.data.fileManifest.map((m: any) => ({
+                ...m,
+                file: null,
+                isVirtual: true
+            }));
+            setEvidenceFiles(prev => {
+                const existingNames = new Set(prev.map(f => f.name));
+                const filteredRestored = restoredManifest.filter((f: any) => !existingNames.has(f.name));
+                return [...prev, ...filteredRestored];
+            });
+        }
+        alert("Ficheiro carregado com sucesso.");
+    } catch (err: any) {
+        alert(err.message);
+    }
+    e.target.value = '';
   };
 
   const peopleMap = React.useMemo(() => {
@@ -171,18 +175,14 @@ const App: React.FC = () => {
       return map;
   }, [evidenceFiles, project.people]);
 
-  const toggleFolder = (folderKey: string) => setExpandedFolders(prev => ({ ...prev, [folderKey]: !prev[folderKey] }));
-  
   const handleOpenOriginal = (fileId: string, pageOrSeconds?: number) => {
       const file = evidenceFiles.find(f => f.id === fileId);
       if (file && file.file) {
           let url = URL.createObjectURL(file.file);
-          if (file.type === 'PDF' && pageOrSeconds) {
-              url += `#page=${pageOrSeconds}`;
-          }
+          if (file.type === 'PDF' && pageOrSeconds) url += `#page=${pageOrSeconds}`;
           window.open(url, '_blank');
       } else {
-          alert("Ficheiro original não disponível (Virtual). Por favor, re-importe os ficheiros no separador DADOS.");
+          alert("Ficheiro original não disponível (Virtual). Por favor, adicione o ficheiro físico na aba DADOS.");
       }
   };
 
@@ -196,28 +196,23 @@ const App: React.FC = () => {
                     const fileRef = matchNameRef[1];
                     const refPart = matchNameRef[2];
                     const file = evidenceFiles.find(f => f.name.toLowerCase().includes(fileRef.toLowerCase()) || fileRef.toLowerCase().includes(f.name.toLowerCase()));
-                    
                     if (file) {
                         const isAudio = file.type === 'AUDIO';
                         return (
-                            <button 
-                                key={i} 
-                                onClick={(e) => { 
-                                    e.stopPropagation(); 
-                                    if (isAudio) {
+                            <button key={i} onClick={(e) => { 
+                                e.stopPropagation(); 
+                                if (isAudio) { 
+                                    // Always trigger a seek even if ID is same
+                                    setActiveEvidenceId(null);
+                                    setTimeout(() => {
                                         setActiveEvidenceId(file.id); 
                                         setSeekSeconds(parseSecondsSafe(refPart));
-                                    } else {
-                                        const page = parseInt(refPart.match(/\d+/)?.[0] || "1");
-                                        handleOpenOriginal(file.id, page);
-                                    }
-                                }} 
-                                className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-mono transition-colors border shadow-sm mx-1
-                                    ${isAudio 
-                                        ? 'bg-blue-100 dark:bg-primary-900/40 text-blue-700 dark:text-primary-300 border-blue-200 dark:border-primary-800 hover:bg-blue-200' 
-                                        : 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800 hover:bg-orange-200'}`}
-                            >
-                                {isAudio ? <Play size={8} fill="currentColor"/> : <BookOpen size={8}/>} {refPart}
+                                    }, 0);
+                                } else { 
+                                    handleOpenOriginal(file.id, parseInt(refPart.match(/\d+/)?.[0] || "1")); 
+                                } 
+                            }} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono transition-colors border shadow-sm mx-1 ${isAudio ? 'bg-blue-100 dark:bg-primary-900/40 text-blue-700 dark:text-primary-300 border-blue-200 hover:bg-blue-200' : 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300 border-orange-200 hover:bg-orange-200'}`}>
+                                {isAudio ? <Play size={9} fill="currentColor"/> : <BookOpen size={9}/>} {refPart}
                             </button>
                         );
                     }
@@ -228,8 +223,8 @@ const App: React.FC = () => {
       );
   };
 
-  const renderMessageContent = (msgText: string) => {
-      const lines = msgText.split('\n');
+  const renderMessageContent = (msg: ChatMessage) => {
+      const lines = msg.text.split('\n');
       const renderedElements: React.ReactNode[] = [];
       let currentGroup: { fileName: string, lines: string[] } | null = null;
       lines.forEach((line, i) => {
@@ -246,23 +241,22 @@ const App: React.FC = () => {
                   renderedElements.push(<CitationGroup key={`group-${i}`} fileName={currentGroup.fileName} contentLines={currentGroup.lines} evidenceFiles={evidenceFiles} onSeek={(fid, sec) => { setActiveEvidenceId(fid); setSeekSeconds(sec); }} onOpenOriginal={handleOpenOriginal} renderInline={renderTextWithInlineCitations}/>);
                   currentGroup = null;
               }
-              if (line.trim()) renderedElements.push(<p key={`text-${i}`} className="mb-2 last:mb-0 leading-relaxed text-left">{renderTextWithInlineCitations(line)}</p>);
+              if (line.trim()) renderedElements.push(<p key={`text-${i}`} className="mb-3 last:mb-0 leading-relaxed text-left text-base">{renderTextWithInlineCitations(line)}</p>);
           }
       });
       if (currentGroup) renderedElements.push(<CitationGroup key={`group-last`} fileName={currentGroup.fileName} contentLines={currentGroup.lines} evidenceFiles={evidenceFiles} onSeek={(fid, sec) => { setActiveEvidenceId(fid); setSeekSeconds(sec); }} onOpenOriginal={handleOpenOriginal} renderInline={renderTextWithInlineCitations}/>);
+      if (msg.role === 'model' && msg.usage) renderedElements.push(<TokenBadge key="usage" usage={msg.usage} />);
       return renderedElements;
   };
 
   const addFiles = (fileList: FileList | File[], category: EvidenceCategory) => {
-      const MAX_SIZE = 90 * 1024 * 1024;
       setEvidenceFiles(prevFiles => {
           const updatedFiles = [...prevFiles];
           const newFilesToAdd: EvidenceFile[] = [];
           Array.from(fileList).forEach((f: File) => {
-              if (f.size > MAX_SIZE) return;
+              if (f.size > 90 * 1024 * 1024) return;
               const relativePath = (f as any).webkitRelativePath || "";
               let folderName = relativePath ? (relativePath.split('/').slice(-2, -1)[0] || "Raiz") : "Raiz";
-              
               const existingIndex = updatedFiles.findIndex(ev => ev.name === f.name && ev.category === category);
               if (existingIndex !== -1) {
                   updatedFiles[existingIndex] = { ...updatedFiles[existingIndex], file: f, isVirtual: false, size: f.size };
@@ -274,55 +268,25 @@ const App: React.FC = () => {
       });
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, category: EvidenceCategory) => { if (e.target.files && e.target.files.length > 0) addFiles(e.target.files, category); };
-  const handleDragOver = (e: React.DragEvent, category: EvidenceCategory) => { e.preventDefault(); setDragOverCategory(category); };
-  const handleDrop = (e: React.DragEvent, category: EvidenceCategory) => { e.preventDefault(); setDragOverCategory(null); if (e.dataTransfer.files && e.dataTransfer.files.length > 0) addFiles(e.dataTransfer.files, category); };
-  
-  const handleLoadProject = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      try {
-          const result = await loadFromJSON(file);
-          if (result.type === 'project') setProject({ ...initialProjectState, ...result.data });
-          else if (result.type === 'database') {
-              setProject(prev => ({ ...prev, processedData: result.data.processedData || [] }));
-              const restored = result.data.fileManifest.map(m => ({ id: m.id, name: m.name, type: m.type as EvidenceType, category: m.category as EvidenceCategory, folder: m.folder || "Importado", file: null, isVirtual: true }));
-              setEvidenceFiles(prev => { 
-                const existingNames = new Set(prev.map(f => f.name));
-                return [...prev, ...restored.filter(f => !existingNames.has(f.name))]; 
-              });
-          }
-          alert("Carregado com sucesso.");
-      } catch (err: any) { alert(err.message); }
-      e.target.value = '';
-  };
-
   const runProcessing = async (scope: { type: 'ALL' | 'CATEGORY' | 'FOLDER' | 'FILE', value?: string }) => {
      const unprocessed = evidenceFiles.filter(f => {
          if (f.isVirtual || project.processedData.find(pd => pd.fileId === f.id)) return false;
-         if (f.file && f.file.size > 90 * 1024 * 1024) return false;
          if (scope.type === 'ALL') return true;
          if (scope.type === 'CATEGORY') return f.category === scope.value;
-         if (scope.type === 'FOLDER' && scope.value) { const [cat, ...rest] = scope.value.split('-'); return f.category === cat && f.folder === rest.join('-'); }
          if (scope.type === 'FILE') return f.id === scope.value;
          return false;
      });
-     if (unprocessed.length === 0) return;
-     abortProcessingRef.current = false;
+     if (unprocessed.length === 0) { alert("Não existem novos ficheiros físicos para processar nesta categoria."); return; }
      for (const file of unprocessed) {
-         if (abortProcessingRef.current) { setProcessingQueue([]); break; }
+         if (abortProcessingRef.current) break;
          setProcessingQueue(prev => [...prev, file.id]);
          try {
              const result = await processFile(file, userApiKey);
              setProject(prev => ({ ...prev, processedData: [...prev.processedData, result] }));
-         } catch (e: any) {
-             handleGlobalError(e);
-             if (e.message === "AUTH_FAILED") { setProcessingQueue([]); break; }
-         } finally { setProcessingQueue(prev => prev.filter(id => id !== file.id)); }
+         } catch (e: any) { handleGlobalError(e); } 
+         finally { setProcessingQueue(prev => prev.filter(id => id !== file.id)); }
      }
   };
-
-  const stopProcessing = () => abortProcessingRef.current = true;
 
   const runAnalysis = async () => {
       setIsAnalyzing(true);
@@ -341,151 +305,132 @@ const App: React.FC = () => {
       setProject(p => ({ ...p, chatHistory: [...p.chatHistory, msg] }));
       setChatInput(""); setIsChatting(true);
       try {
-          const resp = await chatWithEvidence(project.processedData, [...project.chatHistory, msg], msg.text, peopleMap, evidenceFiles, userApiKey);
-          setProject(p => ({ ...p, chatHistory: [...p.chatHistory, { id: (Date.now()+1).toString(), role: 'model', text: resp, timestamp: Date.now() }] }));
+          const resp = await chatWithEvidence(project.processedData, [], msg.text, peopleMap, evidenceFiles, userApiKey);
+          setProject(p => ({ ...p, chatHistory: [...p.chatHistory, { id: (Date.now()+1).toString(), role: 'model', text: resp.text, timestamp: Date.now(), usage: resp.usage }] }));
       } catch(e: any) { handleGlobalError(e); }
       finally { setIsChatting(false); }
   };
 
   const handleRenameSpeaker = (fileId: string, oldName: string, newName: string) => {
-    setProject(prev => {
-      const updatedProcessedData = prev.processedData.map(pd => {
-        if (pd.fileId === fileId) {
-          const updatedSegments = pd.segments.map(seg => {
-            const boldOld = `**${oldName}**`;
-            const colonOld = `${oldName}:`;
-            let updatedText = seg.text;
-            if (updatedText.includes(boldOld)) updatedText = updatedText.split(boldOld).join(`**${newName}**`);
-            else if (updatedText.includes(colonOld)) updatedText = updatedText.split(colonOld).join(`${newName}:`);
-            else if (updatedText.startsWith(oldName)) updatedText = updatedText.replace(oldName, newName);
-            return { ...seg, text: updatedText };
-          });
-          return { ...pd, segments: updatedSegments, fullText: updatedSegments.map(s => `[${s.timestamp}] ${s.text}`).join('\n') };
-        }
-        return pd;
-      });
-      return { ...prev, processedData: updatedProcessedData };
-    });
-  };
-
-  const renderFileCard = (file: EvidenceFile) => {
-      const isProcessed = project.processedData.some(pd => pd.fileId === file.id);
-      const isProcessing = processingQueue.includes(file.id);
-      const isTooLarge = file.file && file.file.size > 90 * 1024 * 1024;
-      return (
-         <div key={file.id} className={`bg-white dark:bg-slate-900 border p-2 rounded flex flex-col gap-2 transition-all mb-1 ${isTooLarge ? 'border-red-500 bg-red-50/10' : file.isVirtual ? 'border-orange-200' : 'border-gray-200 dark:border-slate-800'}`}>
-             <div className="flex items-center justify-between">
-                 <div className="flex items-center gap-2 overflow-hidden">
-                     <div className={`w-6 h-6 rounded flex items-center justify-center shrink-0 text-[10px] ${file.type === 'AUDIO' ? 'bg-blue-100 text-blue-600' : 'bg-red-100 text-red-600'}`}>
-                         {file.type === 'AUDIO' ? <FileAudio size={12}/> : <FileText size={12}/>}
-                     </div>
-                     <div className="overflow-hidden">
-                         <div className="text-xs font-medium truncate w-32 dark:text-slate-300" title={file.name}>{file.name}</div>
-                         <div className="flex items-center gap-2">
-                             {isTooLarge ? <span className="text-[9px] text-red-600 font-bold uppercase">MUITO GRANDE</span> 
-                             : file.isVirtual ? <span className="text-[9px] text-orange-500 font-bold uppercase">EM FALTA</span> 
-                             : <div className={`text-[9px] font-mono uppercase ${isProcessed ? 'text-green-600' : 'text-gray-500'}`}>{isProcessed ? 'PRONTO' : 'PENDENTE'}</div>}
-                         </div>
-                     </div>
-                 </div>
-                 <div className="flex items-center gap-2">
-                     {!isProcessed && !isProcessing && !file.isVirtual && !isTooLarge && (<button onClick={(e) => { e.stopPropagation(); runProcessing({ type: 'FILE', value: file.id }); }} className="p-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100"><Play size={10} fill="currentColor" /></button>)}
-                     <button onClick={() => setEvidenceFiles(prev => prev.filter(f => f.id !== file.id))} className="text-gray-400 hover:text-red-500"><Trash2 size={12} /></button>
-                 </div>
-             </div>
-         </div>
-      );
+    setProject(prev => ({
+        ...prev,
+        processedData: prev.processedData.map(pd => {
+            if (pd.fileId === fileId) {
+                const escapedOldName = oldName.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+                const updatedSegments = pd.segments.map(seg => ({
+                    ...seg,
+                    text: seg.text.replace(new RegExp(`^\\s*\\*\\*${escapedOldName}\\*\\*[:\\s]*`, 'g'), `**${newName}**: `)
+                                  .replace(new RegExp(`^\\s*${escapedOldName}:`, 'g'), `${newName}: `)
+                }));
+                return { ...pd, segments: updatedSegments, fullText: updatedSegments.map(s => `[${s.timestamp}] ${s.text}`).join('\n') };
+            }
+            return pd;
+        })
+    }));
   };
 
   const renderUploadSection = (title: string, category: EvidenceCategory, icon: React.ReactNode, description: string) => {
-      const files = evidenceFiles.filter(f => f.category === category);
-      const unprocessed = files.filter(f => !project.processedData.find(pd => pd.fileId === f.id) && !(f.file && f.file.size > 90 * 1024 * 1024)).length;
-      const folders: Record<string, EvidenceFile[]> = {};
-      files.forEach(f => { const k = f.folder || 'Raiz'; if(!folders[k]) folders[k] = []; folders[k].push(f); });
-      return (
-          <div className={`bg-white dark:bg-slate-900/50 p-6 rounded-2xl border flex flex-col shadow-sm relative ${dragOverCategory === category ? 'border-primary-500 bg-blue-50' : 'border-gray-200 dark:border-slate-800'}`} onDragOver={(e) => handleDragOver(e, category)} onDrop={(e) => handleDrop(e, category)}>
-              <div className="mb-4 text-left"><h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-1">{icon} {title}</h3><p className="text-xs text-gray-500 dark:text-slate-400">{description}</p></div>
-              <div className="flex gap-2 mb-4">
-                <label className="flex-1 px-3 py-2 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-lg text-xs font-bold cursor-pointer flex items-center justify-center gap-2 text-gray-700 dark:text-slate-200 border border-gray-200 dark:border-slate-700">
-                  <FolderOpen size={14}/> Adicionar Pastas
-                  <input type="file" multiple {...({ webkitdirectory: "", directory: "" } as any)} onChange={(e) => handleFileUpload(e, category)} className="hidden"/>
+    const filesInCategory = evidenceFiles.filter(f => f.category === category);
+    const unproccessedCount = filesInCategory.filter(f => !f.isVirtual && !project.processedData.some(pd => pd.fileId === f.id)).length;
+    const folders: Record<string, EvidenceFile[]> = {};
+    filesInCategory.forEach(f => {
+        const folder = f.folder || 'Raiz';
+        if (!folders[folder]) folders[folder] = [];
+        folders[folder].push(f);
+    });
+
+    return (
+        <div 
+          className={`bg-white dark:bg-slate-900 p-8 rounded-3xl border-2 border-dashed transition-all flex flex-col min-h-[400px] ${dragOverCategory === category ? 'border-primary-500 bg-primary-50/5' : 'border-gray-200 dark:border-slate-800'}`}
+          onDragOver={(e) => { e.preventDefault(); setDragOverCategory(category); }}
+          onDragLeave={() => setDragOverCategory(null)}
+          onDrop={(e) => { e.preventDefault(); setDragOverCategory(null); if(e.dataTransfer.files) addFiles(e.dataTransfer.files, category); }}
+        >
+            <div className="flex items-center justify-between mb-5">
+                <div className="w-14 h-14 bg-gray-50 dark:bg-slate-950 rounded-2xl flex items-center justify-center shadow-inner">{icon}</div>
+                <div className="flex flex-col items-end">
+                  <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest">{filesInCategory.length} Itens</span>
+                  {unproccessedCount > 0 && (
+                      <button onClick={() => runProcessing({ type: 'CATEGORY', value: category })} className="mt-1 text-[10px] font-black text-primary-600 hover:text-primary-500 flex items-center gap-1.5 uppercase transition-colors">
+                        <PlayCircle size={12}/> Processar Novos ({unproccessedCount})
+                      </button>
+                  )}
+                </div>
+            </div>
+            <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-2">{title}</h3>
+            <p className="text-xs text-gray-500 dark:text-slate-500 mb-6">{description}</p>
+            <div className="flex-1 space-y-4 max-h-80 overflow-y-auto pr-3 custom-scrollbar mb-6 text-left">
+                {Object.entries(folders).map(([folderName, files]) => {
+                    const folderKey = `${category}-${folderName}`;
+                    const isExpanded = expandedFolders[folderKey] !== false;
+                    return (
+                        <div key={folderKey} className="space-y-2">
+                            <button onClick={() => setExpandedFolders(prev => ({ ...prev, [folderKey]: !isExpanded }))} className="w-full flex items-center gap-2.5 text-[11px] font-black text-gray-400 uppercase tracking-widest hover:text-primary-500 transition-colors">
+                                {isExpanded ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}
+                                <FolderOpen size={14}/> {folderName} ({files.length})
+                            </button>
+                            {isExpanded && files.map(file => {
+                                const isProcessed = project.processedData.some(pd => pd.fileId === file.id);
+                                const isQueued = processingQueue.includes(file.id);
+                                return (
+                                  <div key={file.id} className={`flex items-center justify-between p-3 rounded-xl border transition-all ${file.isVirtual ? 'bg-orange-50/30 border-orange-100 dark:border-orange-900/30' : 'bg-gray-50 dark:bg-slate-950/50 border-gray-100 dark:border-slate-800'} group`}>
+                                      <div className="flex flex-col truncate flex-1 pr-3">
+                                          <span className={`text-xs font-bold truncate ${file.isVirtual ? 'text-orange-600' : 'text-gray-700 dark:text-slate-300'}`}>{file.name}</span>
+                                          {file.isVirtual && <span className="text-[9px] font-black text-orange-400 uppercase tracking-widest">Requer Ficheiro Físico</span>}
+                                      </div>
+                                      <div className="flex items-center gap-2.5 shrink-0">
+                                          {isProcessed ? <CheckCircle2 size={14} className="text-green-500"/> : isQueued ? <Loader2 size={14} className="animate-spin text-primary-500"/> : !file.isVirtual ? (
+                                              <button onClick={() => runProcessing({ type: 'FILE', value: file.id })} className="p-1.5 text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"><PlayCircle size={16}/></button>
+                                          ) : null}
+                                          <button onClick={() => setEvidenceFiles(prev => prev.filter(f => f.id !== file.id))} className="p-1.5 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={16}/></button>
+                                      </div>
+                                  </div>
+                                );
+                            })}
+                        </div>
+                    );
+                })}
+            </div>
+            <div className="grid grid-cols-2 gap-3 mt-auto">
+                <label className="flex items-center justify-center gap-2.5 py-3.5 bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 rounded-2xl text-[10px] font-black uppercase tracking-widest text-gray-600 dark:text-slate-400 hover:bg-primary-600 hover:text-white hover:border-primary-600 cursor-pointer transition-all shadow-sm">
+                    <FileIcon size={16}/> Ficheiros
+                    <input type="file" multiple className="hidden" onChange={e => e.target.files && addFiles(e.target.files, category)} />
                 </label>
-              </div>
-              <div className="flex-1 bg-gray-50 dark:bg-slate-925 rounded-xl border border-gray-200 dark:border-slate-800 p-2 overflow-y-auto max-h-[350px] space-y-2 mb-4 text-left">
-                  {Object.entries(folders).length === 0 ? (
-                      <div className="h-full flex flex-col items-center justify-center py-12 text-gray-400 italic text-[10px]">Arraste ficheiros ou pastas para aqui</div>
-                  ) : Object.entries(folders).map(([name, fArr]) => {
-                      const folderKey = `${category}-${name}`;
-                      const isExpanded = expandedFolders[folderKey];
-                      const folderUnprocessed = fArr.filter(f => !project.processedData.find(pd => pd.fileId === f.id) && !(f.file && f.file.size > 90 * 1024 * 1024)).length;
-                      return (
-                          <div key={folderKey} className="border border-gray-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900/50 overflow-hidden mb-2">
-                              <div className="p-2 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-slate-800 cursor-pointer" onClick={() => toggleFolder(folderKey)}>
-                                <div className="flex items-center gap-2">{isExpanded ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}<FolderOpen size={14} className="text-primary-500"/><span className="text-xs font-bold truncate max-w-[100px] text-gray-700 dark:text-slate-300">{name}</span><span className="text-[10px] text-gray-500 dark:text-slate-500">({fArr.length})</span></div>
-                                <div className="flex items-center gap-2">
-                                   {folderUnprocessed > 0 && (<button onClick={(e) => { e.stopPropagation(); runProcessing({ type: 'FOLDER', value: folderKey }); }} className="p-1 text-gray-400 hover:text-green-500"><Play size={12} fill="currentColor"/></button>)}
-                                   <button onClick={(e) => { e.stopPropagation(); if(confirm(`Apagar pasta ${name}?`)) setEvidenceFiles(prev => prev.filter(f => !(f.category === category && f.folder === name))); }} className="p-1 text-gray-400 hover:text-red-500"><Trash2 size={12}/></button>
-                                </div>
-                              </div>
-                              {isExpanded && <div className="p-2 bg-gray-50 dark:bg-slate-950/50 border-t border-gray-200 dark:border-slate-800">{fArr.map(renderFileCard)}</div>}
-                          </div>
-                      );
-                  })}
-              </div>
-              {files.length > 0 && (
-                 <button onClick={() => runProcessing({ type: 'CATEGORY', value: category })} disabled={unprocessed === 0 || processingQueue.length > 0} className="w-full py-2.5 bg-primary-600 hover:bg-primary-500 text-white rounded-lg text-xs font-bold disabled:bg-gray-300 dark:disabled:bg-slate-800 disabled:text-gray-500 transition-colors flex items-center justify-center gap-2 shadow-lg shadow-primary-900/20">
-                   {processingQueue.length > 0 ? <Loader2 size={14} className="animate-spin"/> : <Layers size={14}/>} Processar ({unprocessed})
-                 </button>
-              )}
-          </div>
-      );
+                <label className="flex items-center justify-center gap-2.5 py-3.5 bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 rounded-2xl text-[10px] font-black uppercase tracking-widest text-gray-600 dark:text-slate-400 hover:bg-primary-600 hover:text-white hover:border-primary-600 cursor-pointer transition-all shadow-sm">
+                    <FolderOpen size={16}/> Pastas
+                    <input type="file" multiple {...({ webkitdirectory: "", directory: "" } as any)} className="hidden" onChange={e => e.target.files && addFiles(e.target.files, category)} />
+                </label>
+            </div>
+        </div>
+    );
   };
 
   const currentReport = project.savedReports.find(r => r.id === selectedReportId) || project.savedReports[0];
 
   if (currentView === 'landing') return (
-    <div className="h-full flex flex-col items-center justify-center p-8 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-gray-100 via-gray-50 to-white dark:from-slate-900 dark:via-slate-950 transition-colors overflow-y-auto">
-        <div className="max-w-4xl w-full text-center space-y-8 animate-in fade-in zoom-in duration-500 flex flex-col items-center">
-            <div className="w-20 h-20 bg-primary-600 rounded-3xl flex items-center justify-center shadow-2xl mb-2"><Database size={40} className="text-white"/></div>
-            <div><h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">Veritas V2.2 (Flash Lite)</h1><p className="text-gray-500 dark:text-slate-400">Sistema de Análise Forense Multimodal</p></div>
-            
-            <div className="flex gap-12 py-4 border-y border-gray-200 dark:border-slate-800 w-full justify-center max-w-lg">
-                <div className="flex flex-col items-center"><span className="text-3xl font-bold dark:text-white">{evidenceFiles.length}</span><span className="text-xs uppercase text-gray-500">Ficheiros</span></div>
-                <div className="flex flex-col items-center"><span className="text-3xl font-bold dark:text-white">{project.people.length}</span><span className="text-xs uppercase text-gray-500">Pessoas</span></div>
-                <div className="flex flex-col items-center"><span className="text-3xl font-bold dark:text-white">{project.facts.length}</span><span className="text-xs uppercase text-gray-500">Factos</span></div>
+    <div className="h-full flex flex-col items-center justify-center p-8 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-gray-100 via-gray-50 to-white dark:from-slate-900 dark:via-slate-950">
+        <div className="max-w-4xl w-full text-center space-y-10 animate-in fade-in duration-500 flex flex-col items-center">
+            <div className="w-24 h-24 bg-primary-600 rounded-[2.5rem] flex items-center justify-center shadow-2xl mb-2 hover:scale-105 transition-transform"><Database size={48} className="text-white"/></div>
+            <div>
+                <h1 className="text-5xl font-black text-gray-900 dark:text-white mb-3 uppercase tracking-tighter">Veritas Forense V2</h1>
+                <p className="text-lg text-gray-500 dark:text-slate-400 font-semibold">Sistema de Transcrição e Análise Forense Multimodal Profissional</p>
             </div>
-
-            <div className="w-full max-w-2xl bg-white dark:bg-slate-900 p-8 rounded-3xl border border-gray-200 dark:border-slate-800 shadow-2xl text-left space-y-8">
+            <div className="w-full max-w-2xl bg-white dark:bg-slate-900 p-12 rounded-[3rem] border border-gray-200 dark:border-slate-800 shadow-2xl text-left space-y-10">
                 <div className="space-y-4">
-                    <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-                        <Key className="text-primary-500" size={24}/> Configuração de Acesso (IA)
-                    </h3>
-                    <div className="p-4 bg-blue-50 dark:bg-primary-900/20 rounded-2xl border border-blue-100 dark:border-primary-800">
-                        <p className="text-xs text-blue-700 dark:text-primary-300 leading-relaxed">
-                            <strong>Gemini Flash Lite API:</strong> Insira a sua chave para usar o seu próprio saldo. Caso contrário, a aplicação utilizará a chave gratuita (com limites).
-                        </p>
-                    </div>
-                    <input 
-                        type="password" 
-                        className="w-full bg-gray-50 dark:bg-slate-950 border-2 border-gray-200 dark:border-slate-800 p-5 rounded-2xl text-base outline-none focus:border-primary-500 transition-all dark:text-white font-mono placeholder:font-sans" 
-                        placeholder="Gemini API Key..." 
-                        value={userApiKey} 
-                        onChange={e => setUserApiKey(e.target.value)} 
-                    />
+                    <h3 className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-4">Configuração Geral</h3>
+                    <input type="password" className="w-full bg-gray-50 dark:bg-slate-950 border-2 border-gray-200 dark:border-slate-800 p-6 rounded-3xl text-lg outline-none focus:border-primary-500 transition-all dark:text-white font-mono shadow-inner" placeholder="Insira a sua Gemini API Key..." value={userApiKey} onChange={e => setUserApiKey(e.target.value)} />
                 </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                    <button onClick={() => projectInputRef.current?.click()} className="p-4 bg-gray-50 dark:bg-slate-950 hover:bg-gray-100 dark:hover:bg-slate-800 border border-gray-200 dark:border-slate-800 rounded-2xl flex items-center gap-3 cursor-pointer group transition-all text-left">
-                      <FileText size={18} className="text-green-600"/><div className="text-left"><h3 className="font-bold text-xs dark:text-white">Projeto</h3><p className="text-[9px] text-gray-500">veritas_projeto.json</p></div>
+                <div className="grid grid-cols-2 gap-5">
+                    <button onClick={() => projectInputRef.current?.click()} className="p-6 bg-gray-50 dark:bg-slate-950 hover:bg-gray-100 dark:hover:bg-slate-800 border border-gray-200 dark:border-slate-800 rounded-[2rem] flex items-center gap-4 cursor-pointer group transition-all text-left shadow-sm">
+                      <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-2xl"><FileText size={28} className="text-green-600"/></div>
+                      <div className="text-left"><h3 className="font-black text-sm dark:text-white uppercase tracking-tight">Projeto</h3><p className="text-[10px] text-gray-500 font-bold uppercase">Restaurar estado</p></div>
                     </button>
-                    <button onClick={() => databaseInputRef.current?.click()} className="p-4 bg-gray-50 dark:bg-slate-950 hover:bg-gray-100 dark:hover:bg-slate-800 border border-gray-200 dark:border-slate-800 rounded-2xl flex items-center gap-3 cursor-pointer group transition-all text-left">
-                      <Database size={18} className="text-blue-600"/><div className="text-left"><h3 className="font-bold text-xs dark:text-white">Base Dados</h3><p className="text-[9px] text-gray-500">veritas_base_dados.json</p></div>
+                    <button onClick={() => databaseInputRef.current?.click()} className="p-6 bg-gray-50 dark:bg-slate-950 hover:bg-gray-100 dark:hover:bg-slate-800 border border-gray-200 dark:border-slate-800 rounded-[2rem] flex items-center gap-4 cursor-pointer group transition-all text-left shadow-sm">
+                      <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-2xl"><Database size={28} className="text-blue-600"/></div>
+                      <div className="text-left"><h3 className="font-black text-sm dark:text-white uppercase tracking-tight">Base Dados</h3><p className="text-[10px] text-gray-500 font-bold uppercase">Transcrições</p></div>
                     </button>
                 </div>
-
-                <button onClick={() => setCurrentView('setup')} className="w-full p-5 bg-primary-600 hover:bg-primary-500 text-white rounded-2xl font-bold shadow-lg flex items-center justify-center gap-3 hover:scale-[1.01] transition-all uppercase tracking-wider text-base">
-                    Iniciar Aplicação <ChevronRight size={24}/>
-                </button>
+                <button onClick={() => setCurrentView('setup')} className="w-full p-6 bg-primary-600 hover:bg-primary-500 text-white rounded-3xl font-black shadow-xl flex items-center justify-center gap-4 transition-all uppercase tracking-[0.2em] text-lg group">Iniciar Aplicação <ChevronRight size={32} className="group-hover:translate-x-1 transition-transform"/></button>
             </div>
         </div>
         <input type="file" ref={projectInputRef} accept=".json" onChange={handleLoadProject} className="hidden" />
@@ -494,87 +439,100 @@ const App: React.FC = () => {
   );
 
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-slate-950 text-gray-900 dark:text-slate-200 overflow-hidden transition-colors">
-        <aside className="w-24 bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-800 flex flex-col items-center py-6 z-20 shrink-0 shadow-sm custom-scrollbar overflow-y-auto">
-            <div onClick={() => setCurrentView('landing')} className="w-12 h-12 rounded-2xl bg-primary-600 flex items-center justify-center font-bold text-white cursor-pointer shadow-lg mb-8 shrink-0">V2</div>
-            <nav className="flex flex-col gap-6 w-full px-2 items-center">
-                {[{id:'setup',icon:LayoutGrid, label:'DADOS'},{id:'people',icon:Users, label:'PESSOAS'},{id:'library',icon:Library, label:'BIBLIOTECA'},{id:'analysis',icon:FileText, label:'RELATÓRIO'},{id:'chat',icon:MessageSquare, label:'CHAT'}].map(item => (
-                    <button key={item.id} onClick={() => setCurrentView(item.id as View)} className={`w-16 h-16 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all ${currentView === item.id ? 'bg-primary-600 text-white shadow-lg shadow-primary-900/30' : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800'}`}>
+    <div className="flex h-screen bg-gray-50 dark:bg-slate-950 text-gray-900 dark:text-slate-200 overflow-hidden">
+        <aside className="w-64 bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-800 flex flex-col z-20 shrink-0 shadow-lg overflow-y-auto custom-scrollbar transition-all duration-300">
+            <div onClick={() => setCurrentView('landing')} className="p-6 flex items-center gap-4 cursor-pointer hover:bg-gray-50 transition-colors border-b border-gray-100 dark:border-slate-800/50 mb-4">
+                <div className="w-12 h-12 rounded-2xl bg-primary-600 flex items-center justify-center font-black text-white shadow-xl shrink-0">V2</div>
+                <div className="flex flex-col overflow-hidden text-left">
+                    <span className="font-black text-sm uppercase tracking-tighter text-gray-900 dark:text-white truncate">Veritas Forense</span>
+                    <span className="text-[10px] font-black text-primary-500 uppercase tracking-widest">Professional</span>
+                </div>
+            </div>
+            <nav className="flex flex-col gap-2 w-full px-4">
+                {[
+                    {id:'setup', icon:LayoutGrid, label:'Área de Dados'},
+                    {id:'people', icon:Users, label:'Intervenientes'},
+                    {id:'library', icon:Library, label:'Biblioteca'},
+                    {id:'analysis', icon:FileText, label:'Análise Factos'},
+                    {id:'chat', icon:MessageSquare, label:'Chat Assistente'}
+                ].map(item => (
+                    <button key={item.id} onClick={() => setCurrentView(item.id as View)} className={`w-full px-5 py-4 rounded-2xl flex items-center gap-4 transition-all group ${currentView === item.id ? 'bg-primary-600 text-white shadow-lg' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-800'}`}>
                       <item.icon size={22}/>
-                      <span className="text-[9px] font-bold uppercase tracking-tight">{item.label}</span>
+                      <span className="text-xs font-black uppercase tracking-widest">{item.label}</span>
                     </button>
                 ))}
             </nav>
-            <div className="w-10 h-px bg-gray-200 dark:bg-slate-800 my-6"></div>
-            <div className="flex flex-col gap-5 w-full items-center">
-                <button onClick={() => setIsDarkMode(!isDarkMode)} className="flex flex-col items-center gap-1 text-gray-400 hover:text-primary-600 transition-colors">{isDarkMode ? <Sun size={18}/> : <Moon size={18}/>}</button>
-                <button onClick={() => setIsSettingsOpen(true)} className="flex flex-col items-center gap-1 text-gray-400 hover:text-primary-600 transition-colors"><Settings size={18}/><span className="text-[8px] font-bold uppercase">Config</span></button>
-                <button onClick={generateDocumentation} className="flex flex-col items-center gap-1 text-gray-400 hover:text-purple-600 transition-colors"><HelpCircle size={18}/><span className="text-[8px] font-bold uppercase">Manual</span></button>
-                <div className="flex flex-col items-center gap-2">
-                  <span className="text-[7px] font-black text-gray-400 uppercase tracking-widest mb-1">Projeto</span>
-                  <button onClick={() => projectInputRef.current?.click()} className="flex flex-col items-center gap-1 text-gray-400 hover:text-blue-600 transition-colors"><ArrowUp size={18}/><span className="text-[8px] font-bold uppercase">Load</span></button>
-                  <button onClick={() => saveProjectFile(project)} className="flex flex-col items-center gap-1 text-gray-400 hover:text-blue-600 transition-colors"><ArrowDown size={18}/><span className="text-[8px] font-bold uppercase">Save</span></button>
+            <div className="mx-6 h-px bg-gray-100 dark:bg-slate-800 my-6"></div>
+            <div className="flex flex-col gap-2 w-full px-4 pb-12">
+                <button onClick={() => setIsDarkMode(!isDarkMode)} className="w-full px-5 py-3.5 rounded-2xl flex items-center gap-4 text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-800 transition-all group">
+                    {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+                    <span className="text-xs font-black uppercase tracking-widest">{isDarkMode ? 'Modo Claro' : 'Modo Escuro'}</span>
+                </button>
+                <button onClick={() => setIsSettingsOpen(true)} className="w-full px-5 py-3.5 rounded-2xl flex items-center gap-4 text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-800 transition-all group">
+                    <Settings size={20}/>
+                    <span className="text-xs font-black uppercase tracking-widest">Definições</span>
+                </button>
+                <div className="grid grid-cols-2 gap-2 px-2 mt-4">
+                    <button onClick={() => saveProjectFile(project)} className="flex flex-col items-center justify-center gap-1.5 p-3 rounded-2xl bg-gray-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 text-gray-400 hover:text-blue-600 transition-all group">
+                        <ArrowDown size={18}/>
+                        <span className="text-[8px] font-black uppercase">Save PRJ</span>
+                    </button>
+                    <button onClick={() => saveDatabaseFile(project, evidenceFiles)} className="flex flex-col items-center justify-center gap-1.5 p-3 rounded-2xl bg-gray-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 text-gray-400 hover:text-emerald-600 transition-all group">
+                        <ArrowDown size={18}/>
+                        <span className="text-[8px] font-black uppercase">Save DB</span>
+                    </button>
                 </div>
-                <div className="flex flex-col items-center gap-2">
-                  <span className="text-[7px] font-black text-gray-400 uppercase tracking-widest mb-1">DB</span>
-                  <button onClick={() => databaseInputRef.current?.click()} className="flex flex-col items-center gap-1 text-gray-400 hover:text-blue-600 transition-colors"><ArrowUp size={18}/><span className="text-[8px] font-bold uppercase">Load</span></button>
-                  <button onClick={() => saveDatabaseFile(project, evidenceFiles)} className="flex flex-col items-center gap-1 text-gray-400 hover:text-blue-600 transition-colors"><ArrowDown size={18}/><span className="text-[8px] font-bold uppercase">Save</span></button>
-                </div>
-                <div className="w-10 h-px bg-gray-200 dark:bg-slate-800 my-4"></div>
-                <button onClick={() => { if(confirm("Limpar tudo?")) { setProject(initialProjectState); setEvidenceFiles([]); } }} className="flex flex-col items-center gap-1 text-gray-400 hover:text-emerald-500 transition-colors"><Plus size={20}/><span className="text-[8px] font-bold uppercase">Novo</span></button>
-                <button onClick={() => window.location.reload()} className="flex flex-col items-center gap-1 text-gray-400 hover:text-red-600 mt-2 transition-colors"><LogOut size={18}/><span className="text-[8px] font-bold uppercase">Sair</span></button>
             </div>
             <input type="file" ref={projectInputRef} accept=".json" onChange={handleLoadProject} className="hidden" />
             <input type="file" ref={databaseInputRef} accept=".json" onChange={handleLoadProject} className="hidden" />
         </aside>
 
         <main className="flex-1 flex flex-col overflow-hidden relative">
-            <header className="h-16 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-950/50 backdrop-blur flex items-center px-8 justify-between shrink-0 z-10 text-left">
-                <h1 className="text-lg font-bold text-gray-800 dark:text-white uppercase tracking-tight">
-                    {currentView === 'setup' && 'Gestão de Evidências'}
-                    {currentView === 'people' && 'Gestão de Pessoas'}
-                    {currentView === 'analysis' && 'Relatórios'}
-                    {currentView === 'chat' && 'Assistente IA'}
-                    {currentView === 'library' && 'Biblioteca de Áudio'}
+            <header className="h-20 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-950/50 backdrop-blur flex items-center px-10 justify-between shrink-0 text-left">
+                <h1 className="text-xl font-black text-gray-800 dark:text-white uppercase tracking-tighter">
+                    {currentView === 'setup' && 'Gestão de Evidências e Metadados'}
+                    {currentView === 'library' && 'Arquivo Digital de Depoimentos'}
+                    {currentView === 'analysis' && 'Relatório de Cruzamento e Factos'}
+                    {currentView === 'chat' && 'Análise Assistida por IA'}
+                    {currentView === 'people' && 'Intervenientes do Processo'}
                 </h1>
-                <div className="flex gap-4 text-[10px] font-mono text-gray-500 uppercase">
-                    {userApiKey ? (
-                        <span className="text-green-600 dark:text-green-400 flex items-center gap-1"><ShieldCheck size={10}/> Chave Ativa</span>
-                    ) : (
-                        <span className="text-gray-400 flex items-center gap-1"><ZapOff size={10}/> Chave Free</span>
-                    )}
-                    <span>Ficheiros: {evidenceFiles.length}</span>
+                <div className="flex gap-6 text-[11px] font-mono text-gray-500 uppercase items-center">
+                    {userApiKey ? <span className="text-emerald-500 font-bold bg-emerald-50 dark:bg-emerald-900/10 px-3 py-1.5 rounded-full border border-emerald-100 dark:border-emerald-800/50 flex items-center gap-1.5"><ShieldCheck size={14}/> Gemini Pro Ativo</span> : <span className="text-amber-500 font-bold bg-amber-50 dark:bg-amber-900/10 px-3 py-1.5 rounded-full border border-amber-100 dark:border-amber-800/50 flex items-center gap-1.5"><ZapOff size={14}/> Modo Offline</span>}
+                    <div className="h-6 w-px bg-gray-200 dark:bg-slate-800"></div>
+                    <span className="font-bold">Total Ficheiros: <span className="text-primary-600">{evidenceFiles.length}</span></span>
                 </div>
             </header>
 
-            <div className="flex-1 overflow-y-auto p-8 bg-gray-50 dark:bg-slate-950">
+            <div className="flex-1 overflow-y-auto p-10 bg-gray-50 dark:bg-slate-950">
                 {currentView === 'setup' && (
-                    <div className="max-w-7xl mx-auto space-y-12 pb-24 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                            {renderUploadSection("Depoimentos", 'TESTIMONY', <Mic className="text-blue-500"/>, "Áudios e Transcrições.")}
-                            {renderUploadSection("Autos", 'INQUIRY', <Gavel className="text-red-500"/>, "PDFs dos Autos.")}
-                            {renderUploadSection("Outros", 'OTHER', <Paperclip className="text-yellow-500"/>, "Anexos e Fotos.")}
+                    <div className="max-w-screen-2xl mx-auto space-y-12 pb-24 text-left animate-in fade-in duration-500">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
+                            {renderUploadSection("Depoimentos", 'TESTIMONY', <Mic className="text-blue-500" size={28}/>, "Upload de áudios (MP3, WAV, M4A) para transcrição automática.")}
+                            {renderUploadSection("Autos de Prova", 'INQUIRY', <Gavel className="text-red-500" size={28}/>, "PDFs de inquirições, autos de notícia e relatórios periciais.")}
+                            {renderUploadSection("Anexos Diversos", 'OTHER', <Paperclip className="text-amber-500" size={28}/>, "Outros documentos, fotos ou transcrições manuais.")}
                         </div>
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 pt-8 border-t border-gray-200 dark:border-slate-800">
-                            <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-sm text-left">
-                                <h3 className="font-bold text-gray-800 dark:text-white mb-6 flex items-center gap-2"><CheckCircle2 className="text-primary-500"/> Factos a Provar</h3>
-                                <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 pt-10 border-t border-gray-200 dark:border-slate-800">
+                            <div className="bg-white dark:bg-slate-900 p-10 rounded-[2.5rem] border border-gray-200 dark:border-slate-800 text-left shadow-md">
+                                <h3 className="text-xl font-black text-gray-800 dark:text-white mb-8 flex items-center gap-3 uppercase tracking-tight"><CheckCircle2 className="text-emerald-500" size={24}/> Factos a Validar</h3>
+                                <div className="space-y-6 max-h-[500px] overflow-y-auto pr-3 custom-scrollbar">
                                     {project.facts.map((fact, idx) => (
-                                        <div key={fact.id} className="flex gap-4 group">
-                                            <span className="text-[10px] font-mono text-gray-400 mt-4">#{idx+1}</span>
-                                            <textarea value={fact.text} onChange={(e) => setProject(p => ({ ...p, facts: p.facts.map(f => f.id === fact.id ? { ...f, text: e.target.value } : f) }))} className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 rounded-xl p-4 text-sm focus:border-primary-500 outline-none resize-none h-24 shadow-inner dark:text-slate-300" placeholder="Insira o facto..."/>
-                                            <button onClick={() => setProject(p => ({ ...p, facts: p.facts.filter(f => f.id !== fact.id) }))} className="self-center p-2 text-gray-300 hover:text-red-500"><Trash2 size={18}/></button>
+                                        <div key={fact.id} className="flex gap-5 group">
+                                            <div className="flex flex-col items-center shrink-0">
+                                                <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-slate-800 flex items-center justify-center text-[10px] font-black text-gray-400 group-hover:bg-primary-500 group-hover:text-white transition-all">#{idx+1}</div>
+                                            </div>
+                                            <textarea value={fact.text} onChange={(e) => setProject(p => ({ ...p, facts: p.facts.map(f => f.id === fact.id ? { ...f, text: e.target.value } : f) }))} className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 rounded-2xl p-5 text-base leading-relaxed outline-none focus:border-primary-500 transition-all resize-none h-32 dark:text-slate-300" placeholder="Descreva o facto..."/>
+                                            <button onClick={() => setProject(p => ({ ...p, facts: p.facts.filter(f => f.id !== fact.id) }))} className="self-center p-3 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={22}/></button>
                                         </div>
                                     ))}
                                 </div>
-                                <button onClick={() => setProject(p => ({ ...p, facts: [...p.facts, { id: Math.random().toString(36), text: "" }] }))} className="mt-6 text-xs text-primary-600 font-bold uppercase hover:text-primary-700 flex items-center gap-2"><Plus size={16}/> Adicionar Facto</button>
+                                <button onClick={() => setProject(p => ({ ...p, facts: [...p.facts, { id: Math.random().toString(36), text: "" }] }))} className="mt-8 text-xs font-black text-primary-600 uppercase tracking-[0.2em] flex items-center gap-3 hover:text-primary-500 transition-colors bg-primary-50 dark:bg-primary-900/10 px-6 py-3 rounded-2xl border border-primary-100 dark:border-primary-900/30"><Plus size={18}/> Adicionar Facto</button>
                             </div>
-                            <div className="flex flex-col justify-center items-center p-12 border-2 border-dashed border-gray-300 dark:border-slate-800 rounded-3xl bg-white/50 dark:bg-slate-900/20 text-center">
-                                <div className="w-16 h-16 bg-primary-100 dark:bg-primary-900/30 rounded-full flex items-center justify-center text-primary-600 mb-6 shadow-xl"><PlayCircle size={32}/></div>
-                                <h3 className="text-2xl font-bold text-gray-800 dark:text-white mb-3">Análise Forense (Lite)</h3>
-                                <p className="text-sm text-gray-500 text-center mb-8 max-w-sm">Cruze depoimentos e autos com base nos factos definidos.</p>
-                                <button onClick={runAnalysis} disabled={isAnalyzing} className="px-10 py-4 bg-primary-600 hover:bg-primary-500 text-white rounded-full font-bold shadow-2xl transition-all disabled:opacity-50 flex items-center gap-3">
-                                    {isAnalyzing ? <Loader2 className="animate-spin"/> : "Gerar Relatório"}
+                            <div className="flex flex-col justify-center items-center p-12 border-2 border-dashed border-gray-300 dark:border-slate-800 rounded-[3rem] bg-white/50 dark:bg-slate-900/20 text-center shadow-inner">
+                                <div className="w-20 h-20 bg-primary-100 dark:bg-primary-900/30 rounded-[2rem] flex items-center justify-center text-primary-600 mb-8"><PlayCircle size={40}/></div>
+                                <h3 className="text-3xl font-black dark:text-white mb-4 uppercase tracking-tighter">Análise Cruzada</h3>
+                                <p className="text-base text-gray-500 dark:text-slate-400 mb-10 max-w-sm">A IA irá processar os depoimentos e gerar um relatório forense detalhado.</p>
+                                <button onClick={runAnalysis} disabled={isAnalyzing || project.processedData.length === 0} className="px-12 py-5 bg-primary-600 hover:bg-primary-500 text-white rounded-[2rem] font-black shadow-2xl transition-all disabled:opacity-50 flex items-center gap-4 uppercase tracking-[0.2em] text-sm">
+                                    {isAnalyzing ? <Loader2 className="animate-spin" size={20}/> : "Gerar Relatório Forense"}
                                 </button>
                             </div>
                         </div>
@@ -582,215 +540,153 @@ const App: React.FC = () => {
                 )}
 
                 {currentView === 'library' && (
-                    <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500 text-left">
-                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white dark:bg-slate-900 p-6 rounded-2xl border border-gray-200 dark:border-slate-800 gap-4 shadow-sm">
-                            <div className="flex-1 w-full space-y-4">
-                                <h2 className="text-xl font-bold dark:text-white flex items-center gap-2"><Library className="text-primary-500"/> Arquivo de Depoimentos</h2>
-                                <div className="flex flex-col sm:flex-row gap-4 items-center">
-                                    <div className="relative flex-1 w-full">
-                                        <SearchIcon size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
-                                        <input value={librarySearch} onChange={e => setLibrarySearch(e.target.value)} className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 rounded-xl py-3 pl-10 pr-4 outline-none focus:border-primary-500 text-sm" placeholder="Pesquisar por nome..."/>
-                                    </div>
-                                    <button onClick={() => setLibraryFilterOnlyProcessed(!libraryFilterOnlyProcessed)} className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-2 ${libraryFilterOnlyProcessed ? 'bg-primary-600 text-white border-primary-600' : 'bg-white dark:bg-slate-900 text-gray-600 dark:text-slate-400 border-gray-200 dark:border-slate-700'}`}>
-                                        <Filter size={14}/> {libraryFilterOnlyProcessed ? "Apenas Processados" : "Mostrar Todos"}
-                                    </button>
-                                </div>
-                            </div>
-                            {project.processedData.length > 0 && (
-                                <button 
-                                    onClick={() => exportTranscriptsToWord(project.processedData, "Arquivo_Veritas")}
-                                    className="flex items-center gap-2 px-6 py-3 bg-primary-600 hover:bg-primary-500 text-white rounded-xl text-sm font-bold shadow-lg transition-all shrink-0 w-full md:w-auto justify-center"
-                                >
-                                    <Download size={16}/> Exportar Tudo (.doc)
-                                </button>
-                            )}
+                    <div className="max-w-screen-2xl mx-auto space-y-10 text-left animate-in fade-in">
+                        <div className="flex justify-between items-center">
+                            <h2 className="text-2xl font-black dark:text-white flex items-center gap-4 uppercase tracking-tighter"><Library className="text-primary-500" size={32}/> Biblioteca de Depoimentos</h2>
+                            <input value={librarySearch} onChange={e => setLibrarySearch(e.target.value)} className="bg-white dark:bg-slate-900 border-2 border-gray-100 dark:border-slate-800 rounded-2xl py-3 px-6 text-sm font-bold outline-none focus:border-primary-500 w-80" placeholder="Pesquisar depoimento..."/>
                         </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {(() => {
-                                const filtered = evidenceFiles.filter(f => {
-                                    const isAudio = f.type === 'AUDIO';
-                                    const matchesSearch = f.name.toLowerCase().includes(librarySearch.toLowerCase());
-                                    const isProcessed = project.processedData.some(pd => pd.fileId === f.id);
-                                    if (!isAudio) return false;
-                                    if (!matchesSearch) return false;
-                                    if (libraryFilterOnlyProcessed && !isProcessed) return false;
-                                    return true;
-                                });
-
-                                if (filtered.length === 0) {
-                                    return (
-                                        <div className="col-span-full flex flex-col items-center justify-center py-24 bg-white/50 dark:bg-slate-900/30 rounded-3xl border-2 border-dashed border-gray-200 dark:border-slate-800 text-gray-400 space-y-4">
-                                            <Music size={48} className="opacity-20"/>
-                                            <p className="font-medium">Nenhum áudio encontrado com os critérios atuais.</p>
-                                            <button onClick={() => setCurrentView('setup')} className="text-primary-600 font-bold text-xs uppercase hover:underline">Importar Depoimentos</button>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                            {evidenceFiles.filter(f => f.type === 'AUDIO' && f.name.toLowerCase().includes(librarySearch.toLowerCase())).map(file => {
+                                const processed = project.processedData.find(pd => pd.fileId === file.id);
+                                return (
+                                    <div key={file.id} className="bg-white dark:bg-slate-900 p-8 rounded-[2rem] border border-gray-200 dark:border-slate-800 shadow-md hover:shadow-2xl transition-all group cursor-pointer text-left flex flex-col h-full" onClick={() => setActiveEvidenceId(file.id)}>
+                                        <div className="w-16 h-16 bg-blue-50 dark:bg-primary-900/20 rounded-2xl flex items-center justify-center text-blue-600 mb-6 transition-all group-hover:scale-110 shadow-inner"><FileAudio size={32}/></div>
+                                        <h3 className="font-black text-gray-800 dark:text-white truncate pr-4 text-base mb-2">{file.name}</h3>
+                                        <div className="flex-1 mt-2">{processed && <TokenBadge usage={processed.usage} compact />}</div>
+                                        <div className="mt-8 flex items-center justify-between">
+                                            <span className={`text-[11px] uppercase font-black tracking-[0.2em] px-3 py-1 rounded-lg ${processed ? 'bg-green-50 text-green-600' : 'bg-gray-50 text-gray-400'}`}>{processed ? 'CONCLUÍDO' : 'PENDENTE'}</span>
+                                            <div className="p-3 bg-primary-600 text-white rounded-xl opacity-0 group-hover:opacity-100 transition-all shadow-lg"><PlayIcon size={18} fill="currentColor"/></div>
                                         </div>
-                                    );
-                                }
-
-                                return filtered.map(file => {
-                                    const processed = project.processedData.find(pd => pd.fileId === file.id);
-                                    return (
-                                        <div key={file.id} className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-sm hover:shadow-xl transition-all group cursor-pointer text-left relative overflow-hidden" onClick={() => setActiveEvidenceId(file.id)}>
-                                            <div className="absolute top-0 right-0 p-4">
-                                                 {processed ? (
-                                                     <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.5)]"></div>
-                                                 ) : (
-                                                     <div className="w-2 h-2 bg-gray-300 dark:bg-slate-700 rounded-full"></div>
-                                                 )}
-                                            </div>
-                                            <div className="flex justify-between items-start mb-4">
-                                                <div className="w-12 h-12 bg-blue-50 dark:bg-primary-900/20 rounded-xl flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform"><FileAudio size={24}/></div>
-                                                {processed && (
-                                                    <button 
-                                                        onClick={(e) => { e.stopPropagation(); exportTranscriptsToWord([processed], `Transcrição_${file.name}`); }}
-                                                        className="p-2 text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors bg-gray-50 dark:bg-slate-800 rounded-lg border border-gray-100 dark:border-slate-700"
-                                                        title="Exportar para Word"
-                                                    >
-                                                        <FileText size={16}/>
-                                                    </button>
-                                                )}
-                                            </div>
-                                            <h3 className="font-bold text-gray-800 dark:text-white truncate pr-4" title={file.name}>{file.name}</h3>
-                                            <p className="text-[10px] text-gray-500 mt-1 uppercase font-mono">{file.folder || "Raiz"}</p>
-                                            <div className="mt-6 flex items-center justify-between">
-                                                <span className={`text-[10px] uppercase font-bold tracking-widest ${processed ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`}>
-                                                    {processed ? 'PRONTO' : 'PENDENTE'}
-                                                </span>
-                                                <button className="p-2.5 bg-primary-600 text-white rounded-xl shadow-lg shadow-primary-900/20 opacity-0 group-hover:opacity-100 transition-all active:scale-95">
-                                                    <Play size={18} fill="currentColor"/>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    );
-                                });
-                            })()}
-                        </div>
-                    </div>
-                )}
-
-                {currentView === 'people' && (
-                    <div className="max-w-4xl mx-auto animate-in fade-in duration-500">
-                        <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-sm text-left">
-                            <h3 className="text-xl font-bold mb-6 flex items-center gap-2 text-gray-900 dark:text-white"><Users className="text-primary-500"/> Intervenientes</h3>
-                            <div className="space-y-4 mb-8">
-                                {project.people.length === 0 ? (
-                                    <div className="text-center py-12 text-gray-400 text-sm italic">Nenhum interveniente adicionado.</div>
-                                ) : project.people.map(person => (
-                                    <div key={person.id} className="flex gap-4 items-center bg-gray-50 dark:bg-slate-950 p-4 rounded-xl border border-gray-200 dark:border-slate-800 group">
-                                        <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center text-primary-600"><User size={20}/></div>
-                                        <div className="flex-1 grid grid-cols-2 gap-4">
-                                            <input value={person.name} onChange={e => setProject(p => ({ ...p, people: p.people.map(ps => ps.id === person.id ? { ...ps, name: e.target.value } : ps) }))} className="bg-transparent font-bold text-sm outline-none border-b border-transparent focus:border-primary-500" placeholder="Nome Completo"/>
-                                            <input value={person.role || ""} onChange={e => setProject(p => ({ ...p, people: p.people.map(ps => ps.id === person.id ? { ...ps, role: e.target.value } : ps) }))} className="bg-transparent text-sm outline-none border-b border-transparent focus:border-primary-500" placeholder="Papel / Cargo"/>
-                                        </div>
-                                        <button onClick={() => setProject(p => ({ ...p, people: p.people.filter(ps => ps.id !== person.id) }))} className="p-2 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={18}/></button>
                                     </div>
-                                ))}
-                            </div>
-                            <button onClick={() => setProject(p => ({ ...p, people: [...p.people, { id: Math.random().toString(36), name: "", role: "" }] }))} className="flex items-center gap-2 text-sm font-bold text-primary-600 uppercase tracking-wider"><Plus size={16}/> Adicionar Pessoa</button>
+                                );
+                            })}
                         </div>
                     </div>
                 )}
 
                 {currentView === 'analysis' && (
-                    <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-8 h-full animate-in fade-in duration-500 text-left pb-12">
-                        <div className="lg:col-span-1 bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-800 overflow-hidden flex flex-col shadow-sm max-h-[70vh]">
-                            <div className="p-4 bg-gray-50 dark:bg-slate-950 font-bold text-xs uppercase text-gray-500 border-b dark:border-slate-800">Relatórios Guardados</div>
-                            <div className="flex-1 overflow-y-auto">
-                                {project.savedReports.length === 0 ? (
-                                    <div className="p-8 text-center text-xs text-gray-400 italic">Gere um novo relatório no separador DADOS.</div>
-                                ) : project.savedReports.map(report => (
-                                    <div key={report.id} onClick={() => setSelectedReportId(report.id)} className={`p-4 border-b dark:border-slate-800 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800 transition-all ${selectedReportId === report.id ? 'bg-primary-50 dark:bg-primary-900/10 border-l-4 border-l-primary-500' : ''}`}>
-                                        <div className="font-bold text-sm text-gray-900 dark:text-white truncate">{report.name}</div>
-                                        <div className="text-[10px] text-gray-400 mt-1">{new Date(report.generatedAt).toLocaleString()}</div>
+                    <div className="max-w-6xl mx-auto text-left pb-16 animate-in fade-in duration-500">
+                        {currentReport ? (
+                            <div className="bg-white dark:bg-slate-900 p-12 rounded-[3rem] border border-gray-200 dark:border-slate-800 shadow-xl space-y-10">
+                                <div className="flex justify-between items-start border-b pb-8 dark:border-slate-800">
+                                    <div className="space-y-2">
+                                        <h2 className="text-4xl font-black dark:text-white uppercase tracking-tighter">{currentReport.name}</h2>
+                                        <TokenBadge usage={currentReport.usage} />
                                     </div>
-                                ))}
-                            </div>
-                        </div>
-                        <div className="lg:col-span-3 h-full overflow-y-auto custom-scrollbar pr-2">
-                            {currentReport ? (
-                                <div className="bg-white dark:bg-slate-900 p-10 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-sm space-y-8">
-                                    <div className="flex justify-between items-start border-b border-gray-100 dark:border-slate-800 pb-6">
-                                        <div>
-                                            <h2 className="text-3xl font-black text-gray-900 dark:text-white mb-2">{currentReport.name}</h2>
-                                            <p className="text-xs text-gray-500 uppercase tracking-widest">Gerado em {new Date(currentReport.generatedAt).toLocaleString()}</p>
-                                        </div>
-                                        <button onClick={() => exportToWord(currentReport, currentReport.name)} className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-xl text-xs font-bold hover:bg-primary-500 shadow-lg transition-all"><Download size={14}/> Word</button>
-                                    </div>
-                                    <section>
-                                        <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-gray-800 dark:text-white"><BrainCircuit className="text-primary-500"/> Parecer Geral</h3>
-                                        <div className="p-6 bg-gray-50 dark:bg-slate-950 rounded-2xl border border-gray-100 dark:border-slate-800 text-sm leading-relaxed text-gray-700 dark:text-slate-300 italic">"{currentReport.generalConclusion}"</div>
-                                    </section>
-                                    <section className="space-y-6">
-                                        <h3 className="text-lg font-bold flex items-center gap-2 text-gray-800 dark:text-white"><CheckCircle2 className="text-green-500"/> Verificação de Factos</h3>
-                                        {currentReport.results.map((res, i) => (
-                                            <div key={i} className="p-6 bg-white dark:bg-slate-925 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-shadow text-left">
-                                                <div className="flex justify-between items-start mb-4">
-                                                    <h4 className="font-bold text-sm text-gray-900 dark:text-white flex-1 mr-4">#{i+1}: {res.factText}</h4>
-                                                    <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase shrink-0 ${res.status === FactStatus.CONFIRMED ? 'bg-green-100 text-green-700' : res.status === FactStatus.DENIED ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>{res.status}</span>
-                                                </div>
-                                                <p className="text-sm text-gray-600 dark:text-slate-400 mb-6 leading-relaxed">{res.summary}</p>
-                                                {res.citations && res.citations.length > 0 && (
-                                                    <div className="space-y-2 border-t border-gray-50 dark:border-slate-800 pt-4">
-                                                        <div className="flex flex-wrap gap-2">
-                                                            {res.citations.map((cit, ci) => {
-                                                                const file = evidenceFiles.find(f => f.id === cit.fileId);
-                                                                const isAudio = file?.type === 'AUDIO';
-                                                                return (
-                                                                    <button key={ci} onClick={() => { if (isAudio) { setActiveEvidenceId(cit.fileId); setSeekSeconds(cit.seconds); } else handleOpenOriginal(cit.fileId, cit.seconds); }} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] transition-colors border shadow-sm ${isAudio ? 'bg-blue-50 dark:bg-primary-900/20 text-blue-600 dark:text-primary-400' : 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400'}`}>
-                                                                        {isAudio ? <Play size={10} fill="currentColor"/> : <BookOpen size={10}/>} {cit.fileName} @ {cit.timestamp}
-                                                                    </button>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </section>
+                                    <button onClick={() => exportToWord(currentReport, currentReport.name)} className="flex items-center gap-3 px-8 py-4 bg-primary-600 text-white rounded-2xl text-xs font-black hover:bg-primary-500 shadow-xl transition-all uppercase tracking-widest"><Download size={20}/> Exportar Word</button>
                                 </div>
-                            ) : (
-                                <div className="flex flex-col items-center justify-center h-[50vh] text-gray-400 gap-4"><Database size={48} className="opacity-20"/><p>Selecione um relatório ou gere um novo.</p></div>
-                            )}
-                        </div>
+                                <section>
+                                    <h3 className="text-xl font-black mb-6 flex items-center gap-3 text-gray-800 dark:text-white uppercase tracking-tight"><BrainCircuit className="text-primary-500" size={24}/> Parecer do Analista Forense</h3>
+                                    <div className="p-8 bg-gray-50 dark:bg-slate-950 rounded-[2rem] border-2 border-gray-100 dark:border-slate-800 text-base italic leading-relaxed text-gray-700 dark:text-slate-300 shadow-inner">"{currentReport.generalConclusion}"</div>
+                                </section>
+                                <section className="space-y-8">
+                                    <h3 className="text-xl font-black flex items-center gap-3 text-gray-800 dark:text-white uppercase tracking-tight"><CheckCircle2 className="text-emerald-500" size={24}/> Factos Analisados e Cruzados</h3>
+                                    {currentReport.results.map((res, i) => (
+                                        <div key={i} className="p-8 bg-white dark:bg-slate-925 rounded-3xl border border-gray-200 dark:border-slate-800 shadow-sm hover:shadow-xl hover:border-primary-500/30 transition-all group">
+                                            <div className="flex justify-between items-start mb-6">
+                                                <h4 className="font-black text-lg text-gray-900 dark:text-white flex-1 mr-8 leading-tight">#{i+1}: {res.factText}</h4>
+                                                <span className={`px-4 py-1.5 rounded-full text-[11px] font-black uppercase shrink-0 tracking-[0.15em] shadow-sm ${res.status === FactStatus.CONFIRMED ? 'bg-green-100 text-green-700' : res.status === FactStatus.DENIED ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>{res.status}</span>
+                                            </div>
+                                            <p className="text-base text-gray-600 dark:text-slate-400 mb-8 leading-relaxed font-medium">{res.summary}</p>
+                                            
+                                            {res.citations && res.citations.length > 0 && (
+                                                <div className="mt-6 space-y-3">
+                                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Evidências Citadas:</p>
+                                                    <div className="grid grid-cols-1 gap-3">
+                                                        {res.citations.map((cit, idx) => {
+                                                            const evidence = evidenceFiles.find(ef => ef.id === cit.fileId);
+                                                            const isAudio = evidence?.type === 'AUDIO';
+                                                            return (
+                                                                <div key={idx} className="flex flex-col gap-2 p-4 bg-gray-50 dark:bg-slate-950 rounded-2xl border border-gray-100 dark:border-slate-800">
+                                                                    <div className="flex items-center justify-between">
+                                                                        <div className="flex items-center gap-2">
+                                                                            {isAudio ? <FileAudio size={14} className="text-primary-500"/> : <FileText size={14} className="text-orange-500"/>}
+                                                                            <span className="text-[10px] font-black uppercase text-gray-500">{cit.fileName} @ {cit.timestamp}</span>
+                                                                        </div>
+                                                                        <button 
+                                                                            onClick={() => { 
+                                                                                if (isAudio) { 
+                                                                                    setActiveEvidenceId(null);
+                                                                                    setTimeout(() => {
+                                                                                        setActiveEvidenceId(cit.fileId); 
+                                                                                        setSeekSeconds(cit.seconds);
+                                                                                    }, 0);
+                                                                                } else { 
+                                                                                    handleOpenOriginal(cit.fileId, parseSecondsSafe(cit.timestamp)); 
+                                                                                } 
+                                                                            }} 
+                                                                            className="flex items-center gap-1.5 px-3 py-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-[10px] font-black uppercase text-primary-600 hover:bg-primary-50 transition-colors shadow-sm"
+                                                                        >
+                                                                            {isAudio ? <><Play size={10} fill="currentColor"/> Ouvir</> : <><BookOpen size={10}/> Ver</>}
+                                                                        </button>
+                                                                    </div>
+                                                                    <p className="text-xs italic text-gray-500 dark:text-slate-400 leading-relaxed">"{cit.text}"</p>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </section>
+                            </div>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center py-32 text-gray-400 gap-6 opacity-60">
+                                <div className="w-24 h-24 bg-gray-100 dark:bg-slate-900 rounded-[2rem] flex items-center justify-center"><Database size={48}/></div>
+                                <p className="font-black uppercase tracking-[0.2em] text-sm">Gere um relatório na aba de Dados.</p>
+                            </div>
+                        )}
                     </div>
                 )}
 
                 {currentView === 'chat' && (
-                    <div className="h-full flex flex-col animate-in fade-in duration-500">
-                        <div className="flex-1 overflow-y-auto space-y-6 pb-12 custom-scrollbar px-12">
-                            {project.chatHistory.length === 0 ? (
-                                <div className="h-full flex flex-col items-center justify-center opacity-30 text-center space-y-4 py-24">
-                                    <MessageSquare size={64}/>
-                                    <div><h3 className="font-bold">Assistente Forense Veritas</h3><p className="text-sm">Analise os depoimentos com inteligência artificial.</p></div>
-                                </div>
-                            ) : project.chatHistory.map(msg => (
-                                <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2 duration-300`}>
-                                    <div className={`max-w-[85%] rounded-3xl p-5 shadow-sm text-sm ${msg.role === 'user' ? 'bg-primary-600 text-white rounded-tr-none' : 'bg-white dark:bg-slate-900 text-gray-700 dark:text-slate-300 border border-gray-200 dark:border-slate-800 rounded-tl-none'}`}>
-                                        <div className="flex items-center gap-2 mb-2 text-[10px] font-black uppercase tracking-widest opacity-60">
-                                            {msg.role === 'user' ? <User size={12}/> : <BrainCircuit size={12}/>}
-                                            {msg.role === 'user' ? 'Utilizador' : 'Veritas AI'}
+                    <div className="h-full flex flex-col max-w-screen-xl mx-auto">
+                        <div className="flex-1 overflow-y-auto space-y-8 pb-12 px-10 custom-scrollbar">
+                            {project.chatHistory.map(msg => (
+                                <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-4 duration-500`}>
+                                    <div className={`max-w-[85%] rounded-[2.5rem] p-8 shadow-xl text-base ${msg.role === 'user' ? 'bg-primary-600 text-white rounded-tr-none' : 'bg-white dark:bg-slate-900 text-gray-800 dark:text-slate-200 border border-gray-200 dark:border-slate-800 rounded-tl-none'}`}>
+                                        <div className="flex items-center gap-3 mb-4 text-[11px] font-black uppercase tracking-[0.2em] opacity-70">
+                                            {msg.role === 'user' ? <User size={14}/> : <BrainCircuit size={14}/>}
+                                            {msg.role === 'user' ? 'Analista' : 'Veritas IA'}
                                         </div>
-                                        {renderMessageContent(msg.text)}
+                                        {renderMessageContent(msg)}
                                     </div>
                                 </div>
                             ))}
-                            {isChatting && (
-                                <div className="flex justify-start"><div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-200 dark:border-slate-800 flex items-center gap-2 shadow-sm"><Loader2 size={16} className="animate-spin text-primary-500"/><span className="text-xs text-gray-500 italic">Analisando...</span></div></div>
-                            )}
+                            {isChatting && <div className="flex justify-start"><div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] flex items-center gap-4 shadow-md"><Loader2 className="animate-spin text-primary-500"/><span className="text-xs font-black uppercase tracking-[0.2em] text-gray-500">Analisando evidências...</span></div></div>}
                             <div ref={chatEndRef}/>
                         </div>
-                        <div className="h-24 bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-800 flex items-center px-8 gap-4 relative shrink-0">
-                            <div className="flex-1 bg-gray-100 dark:bg-slate-950 rounded-2xl border border-gray-200 dark:border-slate-800 flex items-center px-4 gap-2 focus-within:border-primary-500 transition-colors shadow-inner">
-                                <input value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleChat()} className="flex-1 bg-transparent py-4 text-sm outline-none text-gray-800 dark:text-slate-200" placeholder="Pergunte algo sobre o caso..."/>
-                                <button onClick={handleChat} disabled={isChatting || !chatInput.trim()} className="p-2 bg-primary-600 text-white rounded-xl hover:bg-primary-500 transition-all disabled:opacity-30"><ArrowUp size={20}/></button>
+                        <div className="h-32 bg-white/50 dark:bg-slate-950/50 backdrop-blur-xl border-t border-gray-200 dark:border-slate-800 flex items-center px-12 gap-5 shrink-0">
+                            <div className="flex-1 bg-white dark:bg-slate-900 rounded-[2rem] border-2 border-gray-100 dark:border-slate-800 flex items-center px-6 shadow-2xl focus-within:border-primary-500 group">
+                                <input value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleChat()} className="flex-1 bg-transparent py-6 text-base font-medium outline-none dark:text-slate-200" placeholder="Pergunte algo sobre o caso..."/>
+                                <button onClick={handleChat} disabled={isChatting || !chatInput.trim()} className="p-3.5 bg-primary-600 text-white rounded-2xl hover:bg-primary-500 shadow-lg active:scale-95"><ArrowUp size={24} strokeWidth={3}/></button>
                             </div>
+                        </div>
+                    </div>
+                )}
+                {currentView === 'people' && (
+                    <div className="max-w-5xl mx-auto text-left animate-in fade-in duration-500">
+                        <div className="bg-white dark:bg-slate-900 p-12 rounded-[3rem] border border-gray-200 dark:border-slate-800 shadow-xl">
+                            <h3 className="text-2xl font-black mb-10 flex items-center gap-4 text-gray-900 dark:text-white uppercase tracking-tighter"><Users className="text-primary-500" size={32}/> Intervenientes do Caso</h3>
+                            <div className="space-y-6 mb-12">
+                                {project.people.map(person => (
+                                    <div key={person.id} className="flex gap-6 items-center bg-gray-50 dark:bg-slate-950 p-6 rounded-3xl border border-gray-100 dark:border-slate-800 group">
+                                        <div className="w-14 h-14 rounded-2xl bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center text-primary-600 font-black shadow-inner uppercase text-lg shrink-0">{person.name?.charAt(0) || '?'}</div>
+                                        <div className="flex-1 grid grid-cols-2 gap-8">
+                                            <input value={person.name} onChange={e => setProject(p => ({ ...p, people: p.people.map(ps => ps.id === person.id ? { ...ps, name: e.target.value } : ps) }))} className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl px-4 py-3 font-black text-base outline-none dark:text-white" placeholder="Nome completo..."/>
+                                            <input value={person.role || ""} onChange={e => setProject(p => ({ ...p, people: p.people.map(ps => ps.id === person.id ? { ...ps, role: e.target.value } : ps) }))} className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl px-4 py-3 text-base outline-none text-gray-500 font-bold" placeholder="Cargo/Papel..."/>
+                                        </div>
+                                        <button onClick={() => setProject(p => ({ ...p, people: p.people.filter(ps => ps.id !== person.id) }))} className="p-3 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={24}/></button>
+                                    </div>
+                                ))}
+                            </div>
+                            <button onClick={() => setProject(p => ({ ...p, people: [...p.people, { id: Math.random().toString(36), name: "", role: "" }] }))} className="flex items-center gap-3 text-sm font-black text-primary-600 uppercase bg-primary-50 dark:bg-primary-900/10 px-8 py-4 rounded-2xl border border-primary-100 transition-all"><UserPlus size={20}/> Adicionar Novo Interveniente</button>
                         </div>
                     </div>
                 )}
             </div>
         </main>
-
         {activeEvidenceId && (
             <EvidenceViewer 
                 file={evidenceFiles.find(f => f.id === activeEvidenceId) || null}
@@ -800,39 +696,28 @@ const App: React.FC = () => {
                 onRenameSpeaker={handleRenameSpeaker}
             />
         )}
-
         {isSettingsOpen && (
             <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-                <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl w-full max-w-md border border-gray-200 dark:border-slate-800 shadow-2xl animate-in zoom-in-95 duration-200">
-                    <div className="flex justify-between items-center mb-6">
-                        <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2"><Settings className="text-primary-500"/> Definições IA</h3>
-                        <button onClick={() => setIsSettingsOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-white"><X size={20}/></button>
+                <div className="bg-white dark:bg-slate-900 p-10 rounded-[3rem] w-full max-w-lg border border-gray-200 dark:border-slate-800 shadow-2xl animate-in zoom-in-95">
+                    <div className="flex justify-between items-center mb-10">
+                        <h3 className="text-2xl font-black text-gray-900 dark:text-white uppercase tracking-tighter">Definições</h3>
+                        <button onClick={() => setIsSettingsOpen(false)} className="text-gray-400 hover:text-white transition-colors p-2 hover:bg-gray-100 rounded-full"><X size={24}/></button>
                     </div>
-                    <div className="space-y-4">
-                        <p className="text-sm text-gray-500 dark:text-slate-400 leading-relaxed">Gemini API Key atual:</p>
-                        <input 
-                            type="password" 
-                            className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 p-3 rounded-lg text-gray-900 dark:text-white outline-none focus:border-primary-500 font-mono" 
-                            placeholder="Gemini API Key..." 
-                            value={userApiKey} 
-                            onChange={e => setUserApiKey(e.target.value)} 
-                        />
+                    <div className="space-y-6 text-left">
+                        <p className="text-[11px] font-black uppercase text-gray-400 tracking-[0.2em] mb-3 ml-1">Chave Gemini API</p>
+                        <input type="password" className="w-full bg-gray-50 dark:bg-slate-950 border-2 border-gray-100 dark:border-slate-800 p-5 rounded-2xl text-gray-900 dark:text-white font-mono text-base outline-none focus:border-primary-500 shadow-inner" placeholder="AI Studio Secret Key..." value={userApiKey} onChange={e => setUserApiKey(e.target.value)} />
                     </div>
-                    <div className="flex justify-end gap-3 mt-8">
-                        {userApiKey && (<button onClick={() => setUserApiKey("")} className="text-red-500 text-xs font-bold uppercase hover:underline mr-auto">Limpar</button>)}
-                        <button onClick={() => setIsSettingsOpen(false)} className="px-6 py-2 bg-primary-600 hover:bg-primary-500 text-white rounded-lg text-sm font-bold shadow-lg uppercase tracking-wide transition-all">Fechar</button>
-                    </div>
+                    <button onClick={() => setIsSettingsOpen(false)} className="w-full mt-10 py-5 bg-primary-600 text-white rounded-2xl font-black shadow-xl hover:bg-primary-500 transition-all uppercase tracking-[0.2em] text-sm">Guardar Configuração</button>
                 </div>
             </div>
         )}
-
         {showQuotaModal && (
             <div className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
-                 <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl max-sm text-center shadow-2xl border border-gray-200 dark:border-slate-800">
-                     <AlertTriangle size={48} className="mx-auto mb-4 text-amber-500"/>
-                     <h3 className="text-xl font-bold mb-2 dark:text-white">Quota Atingida</h3>
-                     <p className="text-sm text-gray-500 dark:text-slate-400 mb-6">Aguarde um minuto para continuar.</p>
-                     <button onClick={() => setShowQuotaModal(false)} className="w-full py-3 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-bold uppercase tracking-wider">OK</button>
+                 <div className="bg-white dark:bg-slate-900 p-12 rounded-[3rem] max-w-md text-center shadow-2xl border border-gray-200 dark:border-slate-800">
+                     <AlertTriangle size={48} className="mx-auto mb-8 text-amber-500 shadow-inner"/>
+                     <h3 className="text-2xl font-black mb-4 dark:text-white uppercase tracking-tighter">Quota Excedida</h3>
+                     <p className="text-base text-gray-500 dark:text-slate-400 mb-10 leading-relaxed font-medium">O limite de pedidos da Google Gemini Free foi atingido. Aguarde cerca de 60 segundos.</p>
+                     <button onClick={() => setShowQuotaModal(false)} className="w-full py-5 bg-amber-600 hover:bg-amber-500 text-white rounded-2xl font-black shadow-xl transition-all uppercase tracking-[0.2em] text-xs">Continuar em Instantes</button>
                  </div>
             </div>
         )}

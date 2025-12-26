@@ -5,17 +5,23 @@ export type EvidenceCategory = 'TESTIMONY' | 'INQUIRY' | 'OTHER';
 export interface Person {
   id: string;
   name: string;
-  role?: string; // e.g., "Testemunha", "Autor", "Réu"
+  role?: string;
+}
+
+export interface UsageMetadata {
+  promptTokens: number;
+  candidatesTokens: number;
+  totalTokens: number;
 }
 
 export interface EvidenceFile {
   id: string;
-  file: File | null; // Nullable for manually imported text or restored sessions
+  file: File | null;
   name: string;
-  folder?: string; // Folder name for grouping
+  folder?: string;
   type: EvidenceType;
   category: EvidenceCategory;
-  personId?: string; // Link to a person
+  personId?: string;
   size?: number;
   isVirtual?: boolean;
 }
@@ -35,8 +41,8 @@ export enum FactStatus {
 export interface Citation {
   fileId: string;
   fileName: string;
-  timestamp: string; // Format "MM:SS" for audio, or "Pág X" for PDF if applicable
-  seconds: number; // For seeking (0 for non-time-based docs)
+  timestamp: string;
+  seconds: number;
   text: string;
 }
 
@@ -54,6 +60,7 @@ export interface AnalysisReport {
   generatedAt: string;
   results: FactAnalysis[];
   generalConclusion: string;
+  usage?: UsageMetadata;
 }
 
 export interface ChatMessage {
@@ -61,31 +68,30 @@ export interface ChatMessage {
   role: 'user' | 'model';
   text: string;
   timestamp: number;
+  usage?: UsageMetadata;
 }
 
 export interface ProcessedContent {
   fileId: string;
   fileName: string;
   fullText: string;
-  // Segments are crucial for Audio Karaoke, but also useful for Page mapping in PDFs
   segments: {
-    timestamp: string; // "MM:SS" or "Page 1"
-    seconds: number;   // Seconds for audio, Page Number for PDF (can use negative or specific logic)
+    timestamp: string;
+    seconds: number;
     text: string;
   }[];
   processedAt: number;
+  usage?: UsageMetadata;
 }
 
 export interface ProjectState {
   people: Person[];
   facts: Fact[];
   processedData: ProcessedContent[]; 
-  savedReports: AnalysisReport[]; // Lista de relatórios guardados
+  savedReports: AnalysisReport[];
   chatHistory: ChatMessage[];
   lastModified: number;
 }
-
-// SERIALIZATION TYPES
 
 export interface SerializedProject {
   type: 'project_v2';
