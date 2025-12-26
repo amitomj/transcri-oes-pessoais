@@ -91,14 +91,20 @@ export const sanitizeTranscript = (rawText: string): { timestamp: string; second
 
 const handleApiError = (error: any) => {
     const msg = error.message?.toLowerCase() || "";
-    if (msg.includes('api_key_invalid') || msg.includes('apikey') || msg.includes('invalid') || msg.includes('401')) {
-        throw new Error("A sua API key não foi aceite pelo serviço. Verifique se está correta ou deixe o campo vazio para usar a API por defeito.");
+    if (
+        msg.includes('api_key_invalid') || 
+        msg.includes('invalid api key') || 
+        msg.includes('401') || 
+        msg.includes('403') ||
+        msg.includes('unauthorized')
+    ) {
+        throw new Error("AUTH_FAILED");
     }
     throw error;
 };
 
 /**
- * Universal Processing Function: Handles Audio, PDF, and Images.
+ * Universal Processing Function: Handles Audio, PDF, and Images using Gemini Flash Lite.
  */
 export const processFile = async (evidenceFile: EvidenceFile, customApiKey?: string): Promise<ProcessedContent> => {
   if (evidenceFile.isVirtual || !evidenceFile.file) {
@@ -107,11 +113,11 @@ export const processFile = async (evidenceFile: EvidenceFile, customApiKey?: str
 
   const APP_MAX_SIZE = 90 * 1024 * 1024;
   if (evidenceFile.file.size > APP_MAX_SIZE) {
-      throw new Error(`O ficheiro "${evidenceFile.name}" excede o limite de 90MB. Por favor, comprima-o.`);
+      throw new Error(`O ficheiro "${evidenceFile.name}" excede o limite de 90MB.`);
   }
 
   const ai = new GoogleGenAI({ apiKey: customApiKey || process.env.API_KEY });
-  const model = "gemini-3-flash-preview"; 
+  const modelName = 'gemini-flash-lite-latest'; 
 
   let systemInstruction = "";
   let userPrompt = "";
@@ -127,7 +133,7 @@ export const processFile = async (evidenceFile: EvidenceFile, customApiKey?: str
   try {
         const filePart = await fileToGenerativePart(evidenceFile.file);
         const response = await ai.models.generateContent({
-          model: model,
+          model: modelName,
           contents: { parts: [filePart, { text: userPrompt }] },
           config: { systemInstruction: systemInstruction, temperature: 0.1 }
         });
@@ -164,7 +170,7 @@ export const parseSecondsSafe = (timestamp: string): number => {
 };
 
 /**
- * Analyze Facts from Evidence
+ * Analyze Facts from Evidence using Gemini Flash Lite.
  */
 export const analyzeFactsFromEvidence = async (
   processedData: ProcessedContent[], 
@@ -174,26 +180,26 @@ export const analyzeFactsFromEvidence = async (
   customApiKey?: string
 ): Promise<AnalysisReport> => {
   const ai = new GoogleGenAI({ apiKey: customApiKey || process.env.API_KEY });
-  const model = "gemini-3-pro-preview"; 
+  const modelName = 'gemini-flash-lite-latest'; 
 
   const factsList = facts.map((f, i) => `${i + 1}. [ID: ${f.id}] ${f.text}`).join('\n');
   const evidenceContext = processedData.map(t => `<file name="${t.fileName}" person="${peopleMap[t.fileId] || "N/A"}">${t.fullText}</file>`).join('\n');
 
-  const systemInstruction = `És um Juiz Analista. Verifica factos cruzando evidências.
+  const systemInstruction = `És um Juiz Analista Forense. Verifica factos cruzando evidências.
   Responde EXCLUSIVAMENTE no seguinte formato para cada facto:
   [[FACT]]
   ID: {id_do_facto}
   [[STATUS]] {Confirmado|Desmentido|Inconclusivo|Não Mencionado} [[END_STATUS]]
-  [[SUMMARY]] {Explicação detalhada da conclusão baseada nas provas} [[END_SUMMARY]]
-  [[EVIDENCES]] [Nome_Ficheiro @ 00:00] ou [Nome_Ficheiro @ Pág X] [[END_EVIDENCES]]
+  [[SUMMARY]] {Explicação da conclusão} [[END_SUMMARY]]
+  [[EVIDENCES]] [Nome_Ficheiro @ 00:00] [[END_EVIDENCES]]
   [[END_FACT]]
 
-  No fim de tudo:
-  [[CONCLUSION]] {Parecer geral sobre o conjunto de factos} [[END_CONCLUSION]]`;
+  No fim:
+  [[CONCLUSION]] {Parecer geral} [[END_CONCLUSION]]`;
 
   try {
     const response = await ai.models.generateContent({
-      model: model,
+      model: modelName,
       contents: { parts: [{ text: `EVIDÊNCIAS:\n${evidenceContext}\n\nFACTOS:\n${factsList}` }] },
       config: { systemInstruction: systemInstruction, temperature: 0.1 }
     });
@@ -221,7 +227,6 @@ export const analyzeFactsFromEvidence = async (
         while ((cMatch = citationRegex.exec(evidenceStr)) !== null) {
             const fileNameRef = cMatch[1].trim();
             const timeOrPageRef = cMatch[2].trim();
-            
             const source = processedData.find(d => 
                 d.fileName.toLowerCase().includes(fileNameRef.toLowerCase()) || 
                 fileNameRef.toLowerCase().includes(d.fileName.toLowerCase())
@@ -233,7 +238,7 @@ export const analyzeFactsFromEvidence = async (
                     fileName: source.fileName,
                     timestamp: timeOrPageRef,
                     seconds: parseSecondsSafe(timeOrPageRef),
-                    text: "Referência à fonte."
+                    text: "Referência à prova."
                 });
             }
         }
@@ -242,9 +247,9 @@ export const analyzeFactsFromEvidence = async (
             const fId = idMatch[1].trim();
             results.push({
                 factId: fId,
-                factText: facts.find(f => f.id === fId)?.text || "Facto não encontrado",
+                factText: facts.find(f => f.id === fId)?.text || "Desconhecido",
                 status: (statusMatch?.[1].trim() as FactStatus) || FactStatus.INCONCLUSIVE,
-                summary: summaryMatch?.[1].trim() || "Análise não disponível.",
+                summary: summaryMatch?.[1].trim() || "Sem resumo.",
                 citations
             });
         }
@@ -258,7 +263,7 @@ export const analyzeFactsFromEvidence = async (
 };
 
 /**
- * Chat with Evidence
+ * Chat with Evidence using Gemini Flash Lite.
  */
 export const chatWithEvidence = async (
   processedData: ProcessedContent[],
@@ -269,12 +274,12 @@ export const chatWithEvidence = async (
   customApiKey?: string
 ): Promise<string> => {
    const ai = new GoogleGenAI({ apiKey: customApiKey || process.env.API_KEY });
-   const model = "gemini-3-flash-preview"; 
+   const modelName = 'gemini-flash-lite-latest'; 
    try {
     const evidenceContext = processedData.map(t => `<doc name="${t.fileName}">${t.fullText}</doc>`).join('\n');
     const response = await ai.models.generateContent({
-        model: model,
-        contents: { parts: [{ text: `EVIDÊNCIAS:\n${evidenceContext}\n\nPERGUNTA: ${currentMessage}\n\nCITAÇÃO SEMPRE NO FORMATO: [Nome_Ficheiro @ MM:SS] ou [Nome_Ficheiro @ Pág X]` }] },
+        model: modelName,
+        contents: { parts: [{ text: `EVIDÊNCIAS:\n${evidenceContext}\n\nPERGUNTA: ${currentMessage}\n\nResponde sempre citando a fonte: [Nome_Ficheiro @ MM:SS]` }] },
         config: { temperature: 0.2 }
     });
     return cleanRepetitiveLoops(response.text || "Sem resposta.");
