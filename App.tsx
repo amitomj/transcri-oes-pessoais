@@ -1,10 +1,9 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Upload, FileText, MessageSquare, PlayCircle, Save, FolderOpen, Plus, Trash2,
   CheckCircle2, AlertCircle, Loader2, FileAudio, BrainCircuit, Database, 
   X, Key, Users, File, FileImage, LayoutGrid, Paperclip, Mic, Gavel, Edit2, Check,
-  ChevronDown, ChevronRight, StopCircle, Play, Layers, ArrowUp, ArrowDown, LogOut, ExternalLink, AlertTriangle, Sun, Moon, Pencil, ChevronUp, UserPlus, Download, ZapOff, Library, Headphones, Music, HelpCircle, User, Filter, Search as SearchIcon, BookOpen
+  ChevronDown, ChevronRight, StopCircle, Play, Layers, ArrowUp, ArrowDown, LogOut, ExternalLink, AlertTriangle, Sun, Moon, Pencil, ChevronUp, UserPlus, Download, ZapOff, Library, Headphones, Music, HelpCircle, User, Filter, Search as SearchIcon, BookOpen, Settings
 } from 'lucide-react';
 import { EvidenceFile, Fact, ProjectState, ChatMessage, ProcessedContent, Person, EvidenceType, Citation, EvidenceCategory, AnalysisReport, SerializedProject, SerializedDatabase, FactStatus } from './types';
 import { processFile, analyzeFactsFromEvidence, chatWithEvidence, sanitizeTranscript, parseSecondsSafe } from './services/geminiService';
@@ -115,6 +114,10 @@ const App: React.FC = () => {
   const [isChatting, setIsChatting] = useState(false);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [librarySearch, setLibrarySearch] = useState("");
+
+  // API Key State
+  const [userApiKey, setUserApiKey] = useState<string>("");
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const projectInputRef = useRef<HTMLInputElement>(null);
   const databaseInputRef = useRef<HTMLInputElement>(null);
@@ -248,7 +251,6 @@ const App: React.FC = () => {
               const relativePath = (f as any).webkitRelativePath || "";
               let folderName = relativePath ? (relativePath.split('/').slice(-2, -1)[0] || "Raiz") : "Raiz";
               
-              // REHYDRATION LOGIC: Check if this file name already exists as a virtual file
               const existingIndex = updatedFiles.findIndex(ev => ev.name === f.name && ev.category === category);
               if (existingIndex !== -1) {
                   updatedFiles[existingIndex] = { ...updatedFiles[existingIndex], file: f, isVirtual: false, size: f.size };
@@ -299,11 +301,11 @@ const App: React.FC = () => {
          if (abortProcessingRef.current) { setProcessingQueue([]); break; }
          setProcessingQueue(prev => [...prev, file.id]);
          try {
-             const result = await processFile(file);
+             const result = await processFile(file, userApiKey);
              setProject(prev => ({ ...prev, processedData: [...prev.processedData, result] }));
          } catch (e: any) {
              if (isQuotaError(e)) { setShowQuotaModal(true); stopProcessing(); break; }
-             else alert(`Erro em ${file.name}: ${e.message}`);
+             else alert(`Erro: ${e.message}`);
          } finally { setProcessingQueue(prev => prev.filter(id => id !== file.id)); }
      }
   };
@@ -313,7 +315,7 @@ const App: React.FC = () => {
   const runAnalysis = async () => {
       setIsAnalyzing(true);
       try {
-          const report = await analyzeFactsFromEvidence(project.processedData, project.facts, peopleMap, evidenceFiles);
+          const report = await analyzeFactsFromEvidence(project.processedData, project.facts, peopleMap, evidenceFiles, userApiKey);
           setProject(prev => ({ ...prev, savedReports: [report, ...prev.savedReports] }));
           setSelectedReportId(report.id);
           setCurrentView('analysis');
@@ -327,29 +329,25 @@ const App: React.FC = () => {
       setProject(p => ({ ...p, chatHistory: [...p.chatHistory, msg] }));
       setChatInput(""); setIsChatting(true);
       try {
-          const resp = await chatWithEvidence(project.processedData, [...project.chatHistory, msg], msg.text, peopleMap, evidenceFiles);
+          const resp = await chatWithEvidence(project.processedData, [...project.chatHistory, msg], msg.text, peopleMap, evidenceFiles, userApiKey);
           setProject(p => ({ ...p, chatHistory: [...p.chatHistory, { id: (Date.now()+1).toString(), role: 'model', text: resp, timestamp: Date.now() }] }));
       } catch(e: any) { if (isQuotaError(e)) setShowQuotaModal(true); else alert(`Erro: ${e.message}`); }
       finally { setIsChatting(false); }
   };
 
   const handleRenameSpeaker = (fileId: string, oldName: string, newName: string) => {
-    setProject(prev => ({
-      ...prev,
-      processedData: prev.processedData.map(pd => {
+    setProject(prev => {
+      const updatedProcessedData = prev.processedData.map(pd => {
         if (pd.fileId === fileId) {
           const updatedSegments = pd.segments.map(seg => {
-            // Robust replacement handling both Markdown bold and simple colon format
             const boldOld = `**${oldName}**`;
             const colonOld = `${oldName}:`;
-            
             let updatedText = seg.text;
             if (updatedText.includes(boldOld)) {
                 updatedText = updatedText.split(boldOld).join(`**${newName}**`);
             } else if (updatedText.includes(colonOld)) {
                 updatedText = updatedText.split(colonOld).join(`${newName}:`);
             } else if (updatedText.startsWith(oldName)) {
-                // Fallback for cases where it's just the name at the start
                 updatedText = updatedText.replace(oldName, newName);
             }
             return { ...seg, text: updatedText };
@@ -362,8 +360,9 @@ const App: React.FC = () => {
           };
         }
         return pd;
-      })
-    }));
+      });
+      return { ...prev, processedData: updatedProcessedData };
+    });
   };
 
   const renderFileCard = (file: EvidenceFile) => {
@@ -406,7 +405,6 @@ const App: React.FC = () => {
               <div className="flex gap-2 mb-4">
                 <label className="flex-1 px-3 py-2 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-lg text-xs font-bold cursor-pointer flex items-center justify-center gap-2 text-gray-700 dark:text-slate-200 border border-gray-200 dark:border-slate-700">
                   <FolderOpen size={14}/> Adicionar Pastas
-                  {/* Fix: Using spread to bypass TypeScript restriction on non-standard directory attributes */}
                   <input type="file" multiple {...({ webkitdirectory: "", directory: "" } as any)} onChange={(e) => handleFileUpload(e, category)} className="hidden"/>
                 </label>
               </div>
@@ -481,6 +479,7 @@ const App: React.FC = () => {
             <div className="w-10 h-px bg-gray-200 dark:bg-slate-800 my-6"></div>
             <div className="flex flex-col gap-5 w-full items-center">
                 <button onClick={() => setIsDarkMode(!isDarkMode)} className="flex flex-col items-center gap-1 text-gray-400 hover:text-primary-600 transition-colors">{isDarkMode ? <Sun size={18}/> : <Moon size={18}/>}</button>
+                <button onClick={() => setIsSettingsOpen(true)} className="flex flex-col items-center gap-1 text-gray-400 hover:text-primary-600 transition-colors"><Settings size={18}/><span className="text-[8px] font-bold uppercase">Config</span></button>
                 <button onClick={generateDocumentation} className="flex flex-col items-center gap-1 text-gray-400 hover:text-purple-600 transition-colors"><HelpCircle size={18}/><span className="text-[8px] font-bold uppercase">Manual</span></button>
                 <div className="flex flex-col items-center gap-2">
                   <span className="text-[7px] font-black text-gray-400 uppercase tracking-widest mb-1">Projeto</span>
@@ -510,6 +509,11 @@ const App: React.FC = () => {
                     {currentView === 'library' && 'Biblioteca de Áudio'}
                 </h1>
                 <div className="flex gap-4 text-[10px] font-mono text-gray-500 uppercase">
+                    {userApiKey ? (
+                        <span className="text-green-600 dark:text-green-400 flex items-center gap-1"><Key size={10}/> Chave Personalizada Ativa</span>
+                    ) : (
+                        <span className="text-gray-400 flex items-center gap-1"><ZapOff size={10}/> Chave Padrão</span>
+                    )}
                     <span>Ficheiros: {evidenceFiles.length}</span>
                     <span>Relatórios: {project.savedReports.length}</span>
                 </div>
@@ -742,6 +746,38 @@ const App: React.FC = () => {
                 onClose={() => { setActiveEvidenceId(null); setSeekSeconds(null); }}
                 onRenameSpeaker={handleRenameSpeaker}
             />
+        )}
+
+        {isSettingsOpen && (
+            <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl w-full max-w-md border border-gray-200 dark:border-slate-800 shadow-2xl animate-in zoom-in-95 duration-200">
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2"><Key className="text-primary-500"/> Configuração API</h3>
+                        <button onClick={() => setIsSettingsOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-white"><X size={20}/></button>
+                    </div>
+                    <div className="space-y-4">
+                        <p className="text-sm text-gray-500 dark:text-slate-400 leading-relaxed">
+                            Insira a sua chave API do Gemini para processamento prioritário ou se desejar usar o seu próprio saldo.
+                        </p>
+                        <div className="bg-blue-50 dark:bg-primary-900/20 p-4 rounded-xl text-xs text-blue-700 dark:text-primary-300 border border-blue-100 dark:border-primary-800">
+                            <strong>Nota:</strong> Se o campo estiver vazio, a aplicação utilizará a chave gratuita do projeto (sujeita a limites de quota).
+                        </div>
+                        <input 
+                            type="password" 
+                            className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 p-3 rounded-lg text-gray-900 dark:text-white outline-none focus:border-primary-500" 
+                            placeholder="Gemini API Key..." 
+                            value={userApiKey} 
+                            onChange={e => setUserApiKey(e.target.value)} 
+                        />
+                    </div>
+                    <div className="flex justify-end gap-3 mt-8">
+                        {userApiKey && (
+                            <button onClick={() => setUserApiKey("")} className="text-red-500 text-xs font-bold uppercase hover:underline mr-auto">Limpar Chave</button>
+                        )}
+                        <button onClick={() => setIsSettingsOpen(false)} className="px-6 py-2 bg-primary-600 hover:bg-primary-500 text-white rounded-lg text-sm font-bold shadow-lg uppercase tracking-wide transition-all">Confirmar</button>
+                    </div>
+                </div>
+            </div>
         )}
         
         {isManualImportOpen && (

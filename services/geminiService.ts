@@ -1,4 +1,3 @@
-
 import { GoogleGenAI } from "@google/genai";
 import { EvidenceFile, EvidenceType, Fact, FactAnalysis, FactStatus, AnalysisReport, ChatMessage, ProcessedContent, Citation } from "../types";
 
@@ -90,10 +89,18 @@ export const sanitizeTranscript = (rawText: string): { timestamp: string; second
     return segments;
 };
 
+const handleApiError = (error: any) => {
+    const msg = error.message?.toLowerCase() || "";
+    if (msg.includes('api_key_invalid') || msg.includes('apikey') || msg.includes('invalid') || msg.includes('401')) {
+        throw new Error("A sua API key não foi aceite pelo serviço. Verifique se está correta ou deixe o campo vazio para usar a API por defeito.");
+    }
+    throw error;
+};
+
 /**
  * Universal Processing Function: Handles Audio, PDF, and Images.
  */
-export const processFile = async (evidenceFile: EvidenceFile): Promise<ProcessedContent> => {
+export const processFile = async (evidenceFile: EvidenceFile, customApiKey?: string): Promise<ProcessedContent> => {
   if (evidenceFile.isVirtual || !evidenceFile.file) {
       throw new Error("Este ficheiro é virtual e não pode ser processado.");
   }
@@ -103,7 +110,7 @@ export const processFile = async (evidenceFile: EvidenceFile): Promise<Processed
       throw new Error(`O ficheiro "${evidenceFile.name}" excede o limite de 90MB. Por favor, comprima-o.`);
   }
 
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: customApiKey || process.env.API_KEY });
   const model = "gemini-3-flash-preview"; 
 
   let systemInstruction = "";
@@ -141,7 +148,8 @@ export const processFile = async (evidenceFile: EvidenceFile): Promise<Processed
           processedAt: Date.now()
         };
     } catch (error: any) {
-        throw new Error(error.message || `Falha no processamento de ${evidenceFile.name}`);
+        handleApiError(error);
+        throw error;
     }
 };
 
@@ -162,15 +170,15 @@ export const analyzeFactsFromEvidence = async (
   processedData: ProcessedContent[], 
   facts: Fact[],
   peopleMap: Record<string, string>,
-  fileMetadata: EvidenceFile[] 
+  fileMetadata: EvidenceFile[],
+  customApiKey?: string
 ): Promise<AnalysisReport> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: customApiKey || process.env.API_KEY });
   const model = "gemini-3-pro-preview"; 
 
   const factsList = facts.map((f, i) => `${i + 1}. [ID: ${f.id}] ${f.text}`).join('\n');
   const evidenceContext = processedData.map(t => `<file name="${t.fileName}" person="${peopleMap[t.fileId] || "N/A"}">${t.fullText}</file>`).join('\n');
 
-  // Updated Prompt with explicit END tags for all fields
   const systemInstruction = `És um Juiz Analista. Verifica factos cruzando evidências.
   Responde EXCLUSIVAMENTE no seguinte formato para cada facto:
   [[FACT]]
@@ -214,7 +222,6 @@ export const analyzeFactsFromEvidence = async (
             const fileNameRef = cMatch[1].trim();
             const timeOrPageRef = cMatch[2].trim();
             
-            // Try fuzzy matching file name
             const source = processedData.find(d => 
                 d.fileName.toLowerCase().includes(fileNameRef.toLowerCase()) || 
                 fileNameRef.toLowerCase().includes(d.fileName.toLowerCase())
@@ -245,7 +252,8 @@ export const analyzeFactsFromEvidence = async (
 
     return { id: Date.now().toString(), name: `Relatório #${Date.now().toString().slice(-4)}`, generatedAt: new Date().toISOString(), generalConclusion, results };
   } catch (error: any) {
-    throw new Error(`Erro na análise: ${error.message}`);
+    handleApiError(error);
+    throw error;
   }
 };
 
@@ -257,9 +265,10 @@ export const chatWithEvidence = async (
   history: ChatMessage[],
   currentMessage: string,
   peopleMap: Record<string, string>,
-  fileMetadata: EvidenceFile[]
+  fileMetadata: EvidenceFile[],
+  customApiKey?: string
 ): Promise<string> => {
-   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+   const ai = new GoogleGenAI({ apiKey: customApiKey || process.env.API_KEY });
    const model = "gemini-3-flash-preview"; 
    try {
     const evidenceContext = processedData.map(t => `<doc name="${t.fileName}">${t.fullText}</doc>`).join('\n');
@@ -269,5 +278,8 @@ export const chatWithEvidence = async (
         config: { temperature: 0.2 }
     });
     return cleanRepetitiveLoops(response.text || "Sem resposta.");
-   } catch (error: any) { throw error; }
+   } catch (error: any) { 
+       handleApiError(error);
+       throw error; 
+   }
 };
