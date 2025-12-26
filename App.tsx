@@ -4,7 +4,7 @@ import {
   Upload, FileText, MessageSquare, PlayCircle, Save, FolderOpen, Plus, Trash2,
   CheckCircle2, AlertCircle, Loader2, FileAudio, BrainCircuit, Database, 
   X, Key, Users, File as FileIcon, FileImage, LayoutGrid, Paperclip, Mic, Gavel, Edit2, Check,
-  ChevronDown, ChevronRight, StopCircle, Play, Layers, ArrowUp, ArrowDown, LogOut, ExternalLink, AlertTriangle, Sun, Moon, Pencil, ChevronUp, UserPlus, Download, ZapOff, Library, Headphones, Music, HelpCircle, User, Filter, Search as SearchIcon, BookOpen, Settings, ShieldCheck, Zap, Play as PlayIcon
+  ChevronDown, ChevronRight, StopCircle, Play, Layers, ArrowUp, ArrowDown, LogOut, ExternalLink, AlertTriangle, Sun, Moon, Pencil, ChevronUp, UserPlus, Download, ZapOff, Library, Headphones, Music, HelpCircle, User, Filter, Search as SearchIcon, BookOpen, Settings, ShieldCheck, Zap, Play as PlayIcon, FileDown
 } from 'lucide-react';
 import { EvidenceFile, Fact, ProjectState, ChatMessage, ProcessedContent, Person, EvidenceType, Citation, EvidenceCategory, AnalysisReport, SerializedProject, SerializedDatabase, FactStatus, UsageMetadata } from './types';
 import { processFile, analyzeFactsFromEvidence, chatWithEvidence, sanitizeTranscript, parseSecondsSafe } from './services/geminiService';
@@ -543,7 +543,17 @@ const App: React.FC = () => {
                     <div className="max-w-screen-2xl mx-auto space-y-10 text-left animate-in fade-in">
                         <div className="flex justify-between items-center">
                             <h2 className="text-2xl font-black dark:text-white flex items-center gap-4 uppercase tracking-tighter"><Library className="text-primary-500" size={32}/> Biblioteca de Depoimentos</h2>
-                            <input value={librarySearch} onChange={e => setLibrarySearch(e.target.value)} className="bg-white dark:bg-slate-900 border-2 border-gray-100 dark:border-slate-800 rounded-2xl py-3 px-6 text-sm font-bold outline-none focus:border-primary-500 w-80" placeholder="Pesquisar depoimento..."/>
+                            <div className="flex gap-4 items-center">
+                                {project.processedData.length > 0 && (
+                                    <button 
+                                        onClick={() => exportTranscriptsToWord(project.processedData, `Transcricoes_Completas_${new Date().toISOString().slice(0,10)}`)}
+                                        className="flex items-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-md active:scale-95"
+                                    >
+                                        <FileDown size={14}/> Exportar Tudo (.doc)
+                                    </button>
+                                )}
+                                <input value={librarySearch} onChange={e => setLibrarySearch(e.target.value)} className="bg-white dark:bg-slate-900 border-2 border-gray-100 dark:border-slate-800 rounded-2xl py-3 px-6 text-sm font-bold outline-none focus:border-primary-500 w-80 shadow-sm" placeholder="Pesquisar depoimento..."/>
+                            </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
                             {evidenceFiles.filter(f => f.type === 'AUDIO' && f.name.toLowerCase().includes(librarySearch.toLowerCase())).map(file => {
@@ -555,7 +565,18 @@ const App: React.FC = () => {
                                         <div className="flex-1 mt-2">{processed && <TokenBadge usage={processed.usage} compact />}</div>
                                         <div className="mt-8 flex items-center justify-between">
                                             <span className={`text-[11px] uppercase font-black tracking-[0.2em] px-3 py-1 rounded-lg ${processed ? 'bg-green-50 text-green-600' : 'bg-gray-50 text-gray-400'}`}>{processed ? 'CONCLUÍDO' : 'PENDENTE'}</span>
-                                            <div className="p-3 bg-primary-600 text-white rounded-xl opacity-0 group-hover:opacity-100 transition-all shadow-lg"><PlayIcon size={18} fill="currentColor"/></div>
+                                            <div className="flex gap-2">
+                                                {processed && (
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); exportTranscriptsToWord([processed], `Transcricao_${file.name}`); }}
+                                                        className="p-3 bg-gray-100 dark:bg-slate-800 text-gray-500 hover:text-primary-600 rounded-xl transition-all shadow-sm hover:shadow-md"
+                                                        title="Exportar Transcrição (.doc)"
+                                                    >
+                                                        <FileDown size={18} />
+                                                    </button>
+                                                )}
+                                                <div className="p-3 bg-primary-600 text-white rounded-xl shadow-lg group-hover:rotate-12 transition-all"><PlayIcon size={18} fill="currentColor"/></div>
+                                            </div>
                                         </div>
                                     </div>
                                 );
